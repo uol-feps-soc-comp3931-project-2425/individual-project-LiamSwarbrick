@@ -1,0 +1,103 @@
+#version 460 core
+
+/* 
+It seems DOOM 2016 uses 16x9x24 exponentially mapped clusters, avalanche uses 64x64x16 exponentially mapped.
+Doom probably uses larger clusters since the game is all close range viewing. avalanche's games are more open world and you don't want too many lights 
+per cluster which would occur at far clusters if the clusters are too big.
+*/
+// TODO: Try froxel shaped clusters
+// NOTE for thesis: what are the benefits of this:
+// - tighter fit means less computation per fragment but more expensive cluster compute shader
+// Which to use: read the papers, probably implement both and do performance comparison: two compute shaders -> measure performance.
+// Cluster XYZ dimensions: 16x9x24 as doom does, but how much does this matter, how much does the granualirty matter - especially on integrated graphics?
+// Integrated graphics: should we have more granular compute shader because even like 10 point lights per fragment kills performance
+//   So would be interesting to see what percentage of frame time is spent on clustered shading: implement performance metrics
+// Avalanche Engine uses 4 light indices per 64x64x16 tiles
+
+#define EFFICIENT_WORKGROUPS
+#ifdef EFFICIENT_WORKGROUPS
+
+#ifndef CLUSTER_GRID_SIZE_X
+#define CLUSTER_GRID_SIZE_X 16
+#endif
+
+#ifndef CLUSTER_GRID_SIZE_Y
+#define CLUSTER_GRID_SIZE_Y 9
+#endif
+
+    layout (local_size_x = CLUSTER_GRID_SIZE_X, local_size_y = CLUSTER_GRID_SIZE_Y, local_size_z = 1) in;
+#else
+    layout (local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+#endif
+
+#ifndef CLUSTER_MAX_LIGHTS
+    #define CLUSTER_MAX_LIGHTS 100
+#endif
+struct Cluster
+{
+    vec4 min_point;
+    vec4 max_point;
+    uint count;
+    uint light_indices[CLUSTER_MAX_LIGHTS];
+};
+
+layout (std430, binding = 1) restrict buffer cluster_ssbo
+{
+    Cluster clusters[];
+};
+
+layout (location = 0) uniform float near;
+layout (location = 1) uniform float far;
+layout (location = 2) uniform mat4 inv_proj;
+layout (location = 3) uniform uvec3 grid_size;  // = { CLUSTER_GRID_SIZE_X,Y,Z }
+layout (location = 4) uniform uvec2 screen_dimensions;
+
+vec3
+screen_to_view(vec2 screenspace)
+{
+    // Near plane (which represents the screen) is at depth -1.0 in OpenGL
+    vec4 ndc = vec4((2. * screenspace / screen_dimensions) - vec2(1.), -1.0, 1.0);
+    vec4 viewspace = inv_proj * ndc;
+    viewspace /= viewspace.w;
+    return viewspace.xyz;
+}
+
+vec3
+linear_intersection_with_z_plane(vec3 start_point, vec3 end_point, float z_distance)
+{
+    vec3 direction = end_point - start_point;
+    vec3 normal = vec3(0.0, 0.0, -1.0);
+
+    float t = (z_distance - dot(normal, start_point)) / dot(normal, direction);
+    return start_point + (t * direction);
+}
+
+void
+main()
+{
+    uvec3 ID = gl_GlobalInvocationID;
+
+    // Each work group is a tile, a tile is sliced into many clusters
+    uint tile_index = ID.x + (ID.y * grid_size.x) + (ID.z * grid_size.x * grid_size.y);
+    // vec2 tile_size = screen_dimensions / grid_size.xy;  // This underfits and leaves a bar of unlit geometry at the top of the screen
+    vec2 tile_size = ceil(screen_dimensions / vec2(grid_size.xy));
+
+    vec2 min_tile_screenspace = ID.xy * tile_size;
+    vec2 max_tile_screenspace = (ID.xy + 1) * tile_size;
+
+    vec3 min_tile = screen_to_view(min_tile_screenspace);
+    vec3 max_tile = screen_to_view(max_tile_screenspace);
+
+    float clipping_ratio = far / near;
+    float grid_depth = float(grid_size.z);
+    float cluster_near_plane = near * pow(clipping_ratio, float(ID.z) / grid_depth);
+    float cluster_far_plane = near * pow(clipping_ratio, float(ID.z + 1) / grid_depth);
+    
+    vec3 min_point_near = linear_intersection_with_z_plane(vec3(0., 0., 0.), min_tile, cluster_near_plane);
+    vec3 min_point_far = linear_intersection_with_z_plane(vec3(0., 0., 0.), min_tile, cluster_far_plane);
+    vec3 max_point_near = linear_intersection_with_z_plane(vec3(0., 0., 0.), max_tile, cluster_near_plane);
+    vec3 max_point_far = linear_intersection_with_z_plane(vec3(0., 0., 0.), max_tile, cluster_far_plane);
+    
+    clusters[tile_index].min_point = vec4(min(min_point_near, min_point_far), 0.0);
+    clusters[tile_index].max_point = vec4(max(max_point_near, max_point_far), 0.0);
+}

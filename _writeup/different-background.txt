@@ -1,0 +1,3 @@
+area lights:
+- Lecocq∗ et al. (MUST READ BACKGROUND)
+
