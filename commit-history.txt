@@ -1,0 +1,50 @@
+eed3130 - Liam Swarbrick, 31 minutes ago : trying to retrieve old commit history
+0e32c2c - Liam Swarbrick, 17 hours ago : Removed humungous renderdoc files from git repo so i can actually push
+8741746 - Liam Swarbrick, 2 days ago : 1 Area light working (very slow performance)
+716b761 - Liam Swarbrick, 3 days ago : Area lights aren't positioning right and render super glitchy
+77d1a29 - Liam Swarbrick, 4 days ago : Fixing my single area light implementation
+53d4886 - Liam Swarbrick, 9 days ago : Wrote some math derivation notes
+1221909 - Liam Swarbrick, 3 weeks ago : Refactored to pass less parameters around for no reason, and fixed all warnings in -Wall -Wextra
+c75897c - Liam Swarbrick, 3 weeks ago : Going to start refactoring today
+061041b - Liam Swarbrick, 4 weeks ago : TODO: Refactor so that I'm not passing a million parameters to everything, just use the program struct
+af5f471 - Liam Swarbrick, 6 weeks ago : Fixed unlit far clusters to with CPU side using fixed sizeof(Cluster) not adapting when changing light index count. Testing optimal compute values. Fixed unlit bar at top of screen when screen aspect ratio doesn't match tile grid aspect ratio.
+62c0e79 - Liam Swarbrick, 7 weeks ago : Clustered shading working for point lights. Onto area lights
+e2b6590 - Liam Swarbrick, 7 weeks ago : Half way through clustered shading
+485c01e - Liam Swarbrick, 8 weeks ago : starting on cluster assignment compute shading
+9991c3d - Liam Swarbrick, 8 weeks ago : Next step is clustered shading (compute shader?)
+d6afb5a - Liam Swarbrick, 8 weeks ago : Huge image loader improvement: support for gltf files with lots of redundant textures
+e3f7bf2 - Liam Swarbrick, 8 weeks ago : Sort transparent_draw_calls array based on depth somehow
+d9ca49c - Liam Swarbrick, 8 weeks ago : HUGE glTF loader fix, so many more files work now, it took fucking hours to find stupid bugs
+b1baf78 - Liam Swarbrick, 8 weeks ago : SSBOs working with any number of point lights, needs clustered shading
+4d0ceef - Liam Swarbrick, 9 weeks ago : Next step should be clustered point lights
+464492b - Liam Swarbrick, 2 months ago : Redo point lights (its so broken, sometimes when loading the program it works, sometimes not)
+6dcdf60 - Liam Swarbrick, 2 months ago : GUI sliders for changing sun light
+fa4f5ae - Liam Swarbrick, 2 months ago : Shaders now have individual debug names which is very helpful.
+b120ac7 - Liam Swarbrick, 2 months ago : Directional light fixed to use viewspace in fragment shader.
+fd13180 - Liam Swarbrick, 2 months ago : Integrated Nuklear GUI - twas annoying since nuklear messes with global GL state every draw call
+dd6d7fe - Liam Swarbrick, 3 months ago : Disable normal mapping when vao has no tangents, so it still renders fine :)
+7a112c1 - Liam Swarbrick, 3 months ago : Normal mapping! Forrk yeah dood
+c460fdf - Liam Swarbrick, 3 months ago : Uploading normal textures, but first need to refactor uniforms to UBOs and then upload bitangent matrix or whatever
+ea75c2c - Liam Swarbrick, 3 months ago : Adding ambient lighting level
+e85a195 - Liam Swarbrick, 3 months ago : Changed read mode to rb so that it reads files correctly on windows
+cfa07be - Liam Swarbrick, 3 months ago : Removed dot product clamp in BRDF because it causes glitches. Tested more glTF files.
+aeae497 - Liam Swarbrick, 3 months ago : Updated readme for pbr metallic roughness screenshot.
+cdc4943 - Liam Swarbrick, 3 months ago : Working PBR metallic roughness BRDF forrk yeaahhhh
+0c55f39 - Liam Swarbrick, 3 months ago : PBR metallic-roughness finished
+1608606 - Liam Swarbrick, 3 months ago : Continuing with PBR metallic roughness
+d043ca5 - Liam Swarbrick, 3 months ago : Updated readme
+0554bcc - Liam Swarbrick, 3 months ago : Base color texture rendering but VAO texture coordinates are all zeros for some reason :(
+6e8b3d1 - Liam Swarbrick, 3 months ago : TODO: PBR materials
+21c11fa - Liam Swarbrick, 3 months ago : Basic diffuse lighting enabled, TODO: PBR materials
+660fb91 - Liam Swarbrick, 3 months ago : Going to start on pbr
+977c437 - Liam Swarbrick, 3 months ago : continue on rendering gltf
+aaa80b2 - Liam Swarbrick, 3 months ago : Fixed glVertexArrayAttribFormat offset error. Started drawing code for gltf file
+03309af - Liam Swarbrick, 3 months ago : glVertexAttribPointer crashes on gltf file and I don't know why
+a911fd1 - Liam Swarbrick, 4 months ago : Starting full scene loader for gltf
+1e6ceb5 - Liam Swarbrick, 4 months ago : Free camera now working
+8037b47 - Liam Swarbrick, 4 months ago : Created gltf loader for single mesh in gltf scene
+fe57467 - Liam Swarbrick, 4 months ago : Rendered my first GLTF file (a single triangle)
+6298dbc - Liam Swarbrick, 4 months ago : Rendering a quad
+2e42540 - Liam Swarbrick, 4 months ago : writing my project outline
+e396a55 - Liam Swarbrick, 4 months ago : Decided on area light clustered forward rendering, wrote project outline stuff
+7386b3d - github-classroom[bot], 4 months ago : add deadline
