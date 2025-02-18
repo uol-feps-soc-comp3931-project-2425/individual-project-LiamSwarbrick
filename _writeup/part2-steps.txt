@@ -43,3 +43,16 @@ The LTC code is fine with that since it works for concave polygons but the rende
 first triangulate the mesh. I use a simple method that works for mildy concave polygons like star shapes...
 
 
+
+area_light_shape_data.h
+// Defined anti-clockwise, these are n-gons, not triangle meshes
+// This makes it problematic to actually render the light sources when they are concave
+// since that would require triangulation, so instead I'm just using convex polygons,
+// except the star, where I've hardprogrammed the triangle mesh to avoid having to implement
+// an ear-clipping algorithm for concave ngon triangulation.
+
+
+Could mention how I didn't test different cluster shapes e.g. only voxel not froxel
+
+Couldn't use area_lights.length() in for loop because when the ssbo is empty, it returns a big random number and slows the program.
+So instead use uniforms for num_area_lights

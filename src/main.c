@@ -39,6 +39,7 @@
 
 #include "basic_types.h"
 #include "point_light_data.h"
+#include "area_light_shape_data.h"
 
 #include "ltc_matrix.h"
 
@@ -88,6 +89,14 @@ enum PBRShaderLocations
     PBR_LOC_alpha_mask_cutoff          =14,
     PBR_LOC_is_normal_mapping_enabled  =15,
     PBR_LOC_is_alpha_blending_enabled  =16,
+
+    // Clustered shading params
+    PBR_LOC_near              =17,
+    PBR_LOC_far               =18,
+    PBR_LOC_grid_size         =19,
+    PBR_LOC_screen_dimensions =20,
+
+    PBR_LOC_num_area_lights =21,
 };
 
 enum PBR_Shader_Texture_Units
@@ -194,16 +203,16 @@ typedef struct AreaLight
 }
 AreaLight;
 
-void
-init_area_light(AreaLight* al, vec4 color_rgb_intensity_a, int n, int is_double_sided)
-{
-    AreaLight arealight = { 0 };
-    glm_vec4_copy(color_rgb_intensity_a, arealight.color_rgb_intensity_a);
-    arealight.n = n;
-    arealight.is_double_sided = is_double_sided;
+// void
+// init_area_light(AreaLight* al, vec4 color_rgb_intensity_a, int n, int is_double_sided)
+// {
+//     AreaLight arealight = { 0 };
+//     glm_vec4_copy(color_rgb_intensity_a, arealight.color_rgb_intensity_a);
+//     arealight.n = n;
+//     arealight.is_double_sided = is_double_sided;
 
-    memcpy(al, &arealight, sizeof(arealight));
-}
+//     memcpy(al, &arealight, sizeof(arealight));
+// }
 
 void
 transform_area_light(AreaLight* al, mat4 transform)
@@ -214,6 +223,74 @@ transform_area_light(AreaLight* al, mat4 transform)
     }
 }
 
+AreaLight
+make_random_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
+{
+    AreaLight al;
+    vec3 rgb; hsv_to_rgb(rng_rangef(0.0f, 1.0f), 1.0f, 1.0f, rgb);
+    al.color_rgb_intensity_a[0] = rgb[0];
+    al.color_rgb_intensity_a[1] = rgb[1];
+    al.color_rgb_intensity_a[2] = rgb[2];
+    al.color_rgb_intensity_a[3] = 10.0f;//rng_rangef(5.0f, 10.0f);
+
+    // int n = (rand() % 4) + 3;  // Plus 3 since we want triangles and above
+    if (n == 6)  // Special case for star
+    {
+        n = 10;
+    }
+
+    al.n = n;
+    al.is_double_sided = is_double_sided;
+
+    if (n == 3)
+    {
+        memcpy(al.points_worldspace, triangle_points, sizeof(triangle_points));
+    }
+    else if (n == 4)
+    {
+        memcpy(al.points_worldspace, quad_points, sizeof(quad_points));
+    }
+    else if (n == 5)
+    {
+        memcpy(al.points_worldspace, pentagon_points, sizeof(pentagon_points));
+    }
+    else if (n == 10)
+    {
+        memcpy(al.points_worldspace, star_points, sizeof(star_points));
+    }
+    
+    mat4 scale = GLM_MAT4_IDENTITY_INIT;
+    glm_scale(scale, (vec3){ rng_rangef(2.0f, 5.0f), rng_rangef(2.0f, 5.0f), rng_rangef(2.0f, 5.0f) });
+
+    mat4 rot = GLM_MAT4_IDENTITY_INIT;
+    versor q;
+    vec3 up = {0.0f, 0.0f, 1.0f};
+
+    glm_quat_from_vecs(up, normal_vector, q);
+    glm_quat_mat4(q, rot);
+
+    mat4 move;
+    glm_translate_make(move, position);
+
+    mat4 transform = GLM_MAT4_IDENTITY_INIT;
+    glm_mul(move, rot, transform);
+    glm_mul(transform, scale, transform);
+
+    transform_area_light(&al, transform);
+
+    // The transform uses homogeneous coordinates but I simply rely on x,y,z in the shader instead of w
+    // so in order for the rendered light sources to match the location of the light reflections we must make w=1...
+    for (int i = 0; i < n; ++i)
+    {
+        float w = al.points_worldspace[i][3];
+        al.points_worldspace[i][0] /= w;
+        al.points_worldspace[i][1] /= w;
+        al.points_worldspace[i][2] /= w;
+        al.points_worldspace[i][3] = 1.0f;
+    }
+
+    return al;
+}
 
 
 #define CLUSTER_GRID_SIZE_X 32//16 
@@ -282,6 +359,7 @@ typedef struct Scene
 
     // Dynamically add/change point lights in scene here
     DynamicArray point_lights;
+    DynamicArray area_lights;
 }
 Scene;
 
@@ -871,6 +949,7 @@ typedef struct Program
     b32 mouse_capture_on;
     f64 mouse_relative_x;
     f64 mouse_relative_y;
+    u32 last_number_key;
 
     u32 shader_area_light_polygons;
     u32 shader_pbr_opaque;
@@ -1251,12 +1330,18 @@ void
 render_area_lights(int light_count, AreaLight* arealights)
 {
     // Create a temporary VAO/VBO each frame
-    GLuint vao, vbo;
+    GLuint vao, vbo, ebo;
     glGenVertexArrays(1, &vao);
     glBindVertexArray(vao);
     
     glGenBuffers(1, &vbo);
     glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+    // Create ebo for star since its concave so we can't use GL_TRIANGLE_FAN
+    glGenBuffers(1, &ebo);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(star_indices), star_indices, GL_STATIC_DRAW);
+
 
     // Build Vertex Data
     int total_vertices = 0;
@@ -1265,7 +1350,7 @@ render_area_lights(int light_count, AreaLight* arealights)
 
     float* vertex_data = malloc(total_vertices * sizeof(vec3));
     float* color_data = malloc(total_vertices * sizeof(vec3));
-
+    
     int index = 0;
     for (int i = 0; i < light_count; i++)
     {
@@ -1273,15 +1358,18 @@ render_area_lights(int light_count, AreaLight* arealights)
 
         for (int j = 0; j < al->n; j++)
         {
-            glm_vec3_copy((vec3){ al->points_worldspace[j][0], al->points_worldspace[j][1], al->points_worldspace[j][2] },
-                &vertex_data[index * 3]);
+            // glm_vec3_copy((vec3){ al->points_worldspace[j][0], al->points_worldspace[j][1], al->points_worldspace[j][2] },
+                // &vertex_data[index * 3]);
+            vertex_data[index * 3 + 0] = al->points_worldspace[j][0];
+            vertex_data[index * 3 + 1] = al->points_worldspace[j][1];
+            vertex_data[index * 3 + 2] = al->points_worldspace[j][2];
             
             // glm_vec3_copy((vec3){ al->color_rgb_intensity_a[0], al->color_rgb_intensity_a[1], al->color_rgb_intensity_a[2] },
             //     &color_data[index * 3]);
             color_data[index * 3 + 0] = al->color_rgb_intensity_a[0];
             color_data[index * 3 + 1] = al->color_rgb_intensity_a[1];
             color_data[index * 3 + 2] = al->color_rgb_intensity_a[2];
-            
+
             index++;
         }
     }
@@ -1310,7 +1398,14 @@ render_area_lights(int light_count, AreaLight* arealights)
     int offset = 0;
     for (int i = 0; i < light_count; i++)
     {
-        glDrawArrays(GL_TRIANGLE_FAN, offset, arealights[i].n);
+        if (arealights[i].n == 10)
+        {
+            glDrawElementsBaseVertex(GL_TRIANGLES, sizeof(star_indices) / sizeof(f32), GL_UNSIGNED_INT, 0, offset);
+        }
+        else
+        {
+            glDrawArrays(GL_TRIANGLE_FAN, offset, arealights[i].n);
+        }
         offset += arealights[i].n;
     }
     // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
@@ -1329,14 +1424,13 @@ draw_gltf_scene(Scene* scene)
     u32 light_assignment_shader = program.shader_light_assignment;
     b32 enable_clustered_shading = program.is_clustered_shading_enabled;
 
-    // Any alternative opaque_program argument (e.g. normals shader)
-    // must have the same globals as the pbr shaders
-
     // Make sure SSBOs are aren't unbound by thirdparty GUI library
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_POINTLIGHTS, scene->point_light_ssbo);
+    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_AREALIGHTS, scene->area_light_ssbo);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, scene->cluster_grid_ssbo);
 
     u32 num_point_lights = array_length(&scene->point_lights, sizeof(PointLight));
+    u32 num_area_lights = array_length(&scene->area_lights, sizeof(AreaLight));
 
     if (enable_clustered_shading)
     {
@@ -1386,19 +1480,23 @@ draw_gltf_scene(Scene* scene)
     if (enable_clustered_shading)
     {
         // Clustered shading uniform params
-        glProgramUniform1f(shader_program, 17, camera->near_plane);
-        glProgramUniform1f(shader_program, 18, camera->far_plane);
-        glProgramUniform3ui(shader_program, 19, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z);
-        glProgramUniform2ui(shader_program, 20, camera->width, camera->height);
+        glProgramUniform1f(shader_program, PBR_LOC_near, camera->near_plane);
+        glProgramUniform1f(shader_program, PBR_LOC_far, camera->far_plane);
+        glProgramUniform3ui(shader_program, PBR_LOC_grid_size, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z);
+        glProgramUniform2ui(shader_program, PBR_LOC_screen_dimensions, camera->width, camera->height);
+
+        // TODO: Remove here and in shader after area light clustered shading working
+        glProgramUniform1ui(shader_program, PBR_LOC_num_area_lights, num_area_lights);
     }
     else
     {
         glProgramUniform1ui(shader_program, PBR_LOC_num_point_lights, num_point_lights);
+        glProgramUniform1ui(shader_program, PBR_LOC_num_area_lights, num_area_lights);
     }
 
     // Compute and upload light data
 
-    AreaLight al;
+    // AreaLight al;
     // glm_vec4_copy((vec4){ 6.299164, 0.518495, -1.259223, 1.0f }, al.points_worldspace[0]);
     // glm_vec4_copy((vec4){ 6.299164, 5.789216, -1.259223, 1.0f }, al.points_worldspace[1]);
     // glm_vec4_copy((vec4){ 7.287081, 5.789216, 0.096623,  1.0f }, al.points_worldspace[2]);
@@ -1410,12 +1508,13 @@ draw_gltf_scene(Scene* scene)
     // glm_vec4_copy((vec4){ -0.448474, -1.873153, -9.679999, 1.0f }, al.points_worldspace[3]);
     
     // Pentagon (house shape above suntemple fire)
-    init_area_light(&al, (vec4){ 0.9f, 0.5f, 0.4f, 10.0f }, 5, 0);
-    glm_vec4_copy((vec4){ -7.776714, -0.945969, -15.261868,  1.0f }, al.points_worldspace[0]);
-    glm_vec4_copy((vec4){ -7.841511, -0.945969, -16.201321,  1.0f }, al.points_worldspace[1]);
-    glm_vec4_copy((vec4){ -7.841511,  0.184049, -16.201321,  1.0f }, al.points_worldspace[2]);
-    glm_vec4_copy((vec4){ -7.804751,  0.926187, -15.668361,  1.0f }, al.points_worldspace[3]);
-    glm_vec4_copy((vec4){ -7.776423, 0.055773, -15.257641,   1.0f }, al.points_worldspace[4]);
+    // init_area_light(&al, (vec4){ 0.9f, 0.5f, 0.4f, 10.0f }, 5, 0);
+    // init_area_light(&al, (vec4){ 0.5f, 0.9f, 0.6f, 13.0f }, 5, 0);
+    // glm_vec4_copy((vec4){ -7.776714, -0.945969, -15.261868,  1.0f }, al.points_worldspace[0]);
+    // glm_vec4_copy((vec4){ -7.841511, -0.945969, -16.201321,  1.0f }, al.points_worldspace[1]);
+    // glm_vec4_copy((vec4){ -7.841511,  0.184049, -16.201321,  1.0f }, al.points_worldspace[2]);
+    // glm_vec4_copy((vec4){ -7.804751,  0.926187, -15.668361,  1.0f }, al.points_worldspace[3]);
+    // glm_vec4_copy((vec4){ -7.776423, 0.055773, -15.257641,   1.0f }, al.points_worldspace[4]);
 
     // init_area_light(&al, (vec4){ 0.9f, 0.5f, 0.4f, 10.0f }, 6, 0);
     // glm_vec4_copy((vec4){ 1.300821, -2.330142, -10.358570,  1.0f }, al.points_worldspace[0]);
@@ -1459,7 +1558,7 @@ draw_gltf_scene(Scene* scene)
     // glm_vec4_copy((vec4){ 1.169059, -1.134671, -10.061178 , 1.0f },  al.points_worldspace[8]);
     // glm_vec4_copy((vec4){ 0.431561, -1.864982, -10.044465 , 1.0f },  al.points_worldspace[9]);
 
-    mat4 al_transform = GLM_MAT4_IDENTITY_INIT;
+    // mat4 al_transform = GLM_MAT4_IDENTITY_INIT;
     // glm_translate(al_transform, (vec3){ -0.57f, -1.5f, -10.0f });
     // glm_mat4_scale(al_transform, 0.3f);  // WARNING: This would scale the w component and cause mismatch between polygon rendered and actual polygon used in computation
     // Instead do this:
@@ -1469,7 +1568,7 @@ draw_gltf_scene(Scene* scene)
 
     // glm_rotate_x(al_transform, program.time*2.0f, al_transform);
     // glm_rotate_y(al_transform, program.time, al_transform);
-    transform_area_light(&al, al_transform);
+    // transform_area_light(&al, al_transform);
     {
         // Upload Directional Light in View Space
         {
@@ -1491,9 +1590,9 @@ draw_gltf_scene(Scene* scene)
             glProgramUniform1f(shader_program, PBR_LOC_linear_attenuation, scene->attenuation_linear);
             glProgramUniform1f(shader_program, PBR_LOC_quadratic_attenuation, scene->attenuation_quadratic);
         }
-
-        // Upload Point Lights in View Space
-        {   
+        
+        // Resize SSBOs for lights
+        {
             // if (num_point_lights > scene->point_light_ssbo_max)
             if (num_point_lights != scene->point_light_ssbo_max)  // For verification purposes resize the ssbo every time the amount of lights changes
             {
@@ -1508,12 +1607,22 @@ draw_gltf_scene(Scene* scene)
                 // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_POINTLIGHTS, scene->point_light_ssbo);
             }
 
+            if (num_area_lights != scene->area_light_ssbo_max)
+            {
+                scene->area_light_ssbo_max = num_area_lights;
+                size_t new_size = sizeof(AreaLight) * scene->area_light_ssbo_max;
+                glNamedBufferData(scene->area_light_ssbo, new_size, NULL, GL_DYNAMIC_DRAW);
+            }
+        }
+
+        // Upload Point Lights in View Space
+        {   
             // Update point lights buffer
             f32* mapped_pl_ssbo = (float*)glMapNamedBuffer(scene->point_light_ssbo, GL_WRITE_ONLY);
             for (u32 point_id = 0; point_id < num_point_lights; ++point_id)
             {
                 PointLight* point_light = get_element(&scene->point_lights, sizeof(PointLight), point_id);
-
+                
                 // Transform point light position to view space
                 vec4 viewpos = { point_light->position[0], point_light->position[1], point_light->position[2], 1.0f };
                 glm_mat4_mulv(camera->view_matrix, viewpos, viewpos);
@@ -1546,14 +1655,12 @@ draw_gltf_scene(Scene* scene)
 
         // Upload Area lights in View Space
         // TODO: Integrate with clustered shading
-        // TODO: Sumbit draw call with triangles for area light
         {   
             // Update area lights buffer
             f32* mapped_arealight_ssbo = (float*)glMapNamedBuffer(scene->area_light_ssbo, GL_WRITE_ONLY);
-            for (u32 area_id = 0; area_id < 1; ++area_id)
+            for (u32 area_id = 0; area_id < num_area_lights; ++area_id)
             {
-                // TODO: AreaLight* area_light = get_element(&scene->area_lights, sizeof(AreaLight), area_id);
-                AreaLight* area_light = &al;
+                AreaLight* area_light = get_element(&scene->area_lights, sizeof(AreaLight), area_id);
                 
                 // Transform area light polygon from world to view space
                 vec4 points_viewspace[MAX_UNCLIPPED_NGON];
@@ -1629,7 +1736,7 @@ draw_gltf_scene(Scene* scene)
     // Render area lights
     // glEnable(GL_CULL_FACE);  // Must explicitly reenable this in case a double sided item was just rendered.
     glDisable(GL_CULL_FACE);
-    render_area_lights(1, &al);
+    render_area_lights(num_area_lights, scene->area_lights.data_buffer);
 
     free_array(&opaque_draw_calls);
     free_array(&transparent_draw_calls);
@@ -1743,7 +1850,13 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         assert(0 && "Invalid test scene id");
     }
 
+    // Init point lights array
     out_loaded_scene->point_lights = create_array(num_point_lights * sizeof(PointLight));
+
+    // Init area lights array
+    out_loaded_scene->area_lights = create_array(1 * sizeof(AreaLight));
+
+    // Fill point lights array with initial point lights
     PointLight* lights = push_size(&out_loaded_scene->point_lights, sizeof(PointLight), num_point_lights);
     for (u32 i = 0; i < num_point_lights; ++i)
     {
@@ -1754,6 +1867,12 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         glm_vec3_copy((vec3){ randomf(), randomf(), randomf() }, light->color);
         light->intensity = rng_rangef(3.0f, 8.0f);
     }
+
+    // Give area lights array one initial area light:
+    // {
+    //     AreaLight al = make_random_area_light(program.cam.pos, (vec3){ 1.0f, 0.0f, 0.0f }, 0);
+    //     push_element_copy(&out_loaded_scene->area_lights, sizeof(AreaLight), &al);
+    // }
 
     size_t len = array_length(&out_loaded_scene->point_lights, sizeof(PointLight));
 
@@ -2231,21 +2350,39 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         printf("{ %f, %f, %f },\n", program.cam.pos[0], program.cam.pos[1], program.cam.pos[2]);
 
-        // Spawn point light at position
-        PointLight pl = { 0 };
-        glm_vec3_copy(program.cam.pos, pl.position);
-        pl.color[0] = rng_rangef(0.1f, 1.0f);
-        pl.color[1] = rng_rangef(0.1f, 1.0f);
-        pl.color[2] = rng_rangef(0.1f, 1.0f);
-        pl.intensity = 10.0f / glm_vec3_norm(pl.color);
+        int shift_key = mods & GLFW_MOD_SHIFT;
 
-        push_element_copy(&program.scene.point_lights, sizeof(PointLight), &pl);
+        if (shift_key)
+        {
+            // Spawn point light at position
+            PointLight pl = { 0 };
+            glm_vec3_copy(program.cam.pos, pl.position);
+            pl.color[0] = rng_rangef(0.1f, 1.0f);
+            pl.color[1] = rng_rangef(0.1f, 1.0f);
+            pl.color[2] = rng_rangef(0.1f, 1.0f);
+            pl.intensity = 10.0f / glm_vec3_norm(pl.color);
+
+            push_element_copy(&program.scene.point_lights, sizeof(PointLight), &pl);
+        }
+        else
+        {
+            // Spawn area light at position
+            vec3 forward_vector = { 0.0f, 0.0f, -1.0f };
+            glm_vec3_rotate(forward_vector, program.cam.yaw, (vec3){ 0.0f, 1.0f, 0.0f });
+            AreaLight al = make_random_area_light(program.cam.pos, forward_vector, 0, program.last_number_key);
+            push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+            printf("light:%d.. %f, %f, %f\n", al.n, al.points_worldspace[0][0], al.points_worldspace[0][1], al.points_worldspace[0][2]);
+        }
     }
 
     if (key == GLFW_KEY_3 && action == GLFW_PRESS)
-    {
-        load_test_scene(3, &program.scene);
-    }
+        program.last_number_key = 3;
+    else if (key == GLFW_KEY_4)
+        program.last_number_key = 4;
+    else if (key == GLFW_KEY_5)
+        program.last_number_key = 5;
+    else if (key == GLFW_KEY_6)
+        program.last_number_key = 6;
 
     if (key == GLFW_KEY_E && action == GLFW_PRESS)
     {

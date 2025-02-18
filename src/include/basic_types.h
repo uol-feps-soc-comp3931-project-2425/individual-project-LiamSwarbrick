@@ -54,6 +54,33 @@ rng_rangef(float min, float max)
     return min + (max - min) * randomf();
 }
 
+void
+hsv_to_rgb(float h, float s, float v, float out_rgb[3])
+{
+    float r, g, b;
+
+    int i = (int)(h * 6.0f); // Sector of the color wheel (0-5)
+    float f = (h * 6.0f) - i; // Fractional part
+    float p = v * (1.0f - s);
+    float q = v * (1.0f - s * f);
+    float t = v * (1.0f - s * (1.0f - f));
+
+    switch (i % 6) {
+        case 0: r = v; g = t; b = p; break;
+        case 1: r = q; g = v; b = p; break;
+        case 2: r = p; g = v; b = t; break;
+        case 3: r = p; g = q; b = v; break;
+        case 4: r = t; g = p; b = v; break;
+        case 5: r = v; g = p; b = q; break;
+        default: r = g = b = 0; break; // Should never happen
+    }
+
+    out_rgb[0] = r;
+    out_rgb[1] = g;
+    out_rgb[2] = b;
+}
+
+
 char*
 malloc_strcat(const char* a, const char* b)
 {

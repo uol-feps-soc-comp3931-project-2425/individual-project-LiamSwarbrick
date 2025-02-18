@@ -92,8 +92,10 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     layout (location = 19) uniform uvec3 grid_size;
     layout (location = 20) uniform uvec2 screen_dimensions;
 
+    layout (location = 21) uniform uint num_area_lights;  //TODO: REMOVE THIS AFTER IMPLEMENTING CLUSTERED SHADING FOR AREA LIGHTS
 #else
     layout (location = 9) uniform uint num_point_lights;
+    layout (location = 21) uniform uint num_area_lights;
 #endif  // ENABLE_CLUSTERED_SHADING
 
 
@@ -303,9 +305,9 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     // Move LTC domain change matrix into the tangent space.
     Minv = Minv * transpose(mat3(T1, T2, N));
     
-    // use tabulated horizon-clipped sphere
+    // Is fragment behind polygon
     vec3 dir = viewspace_points[0].xyz - P;
-    vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[3].xyz - viewspace_points[0].xyz);
+    vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
     bool behind = dot(dir, light_normal) < 0.;
 
     // Move polygon into tangent space
@@ -330,18 +332,6 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     for (int i = 0; i < viewspace_points_n; ++i)
         points_o[i] = normalize(viewspace_points[i].xyz);
     n = viewspace_points_n;
-    
-    // Using the quad only version:
-    // points_o[0] = viewspace_points[0].xyz;
-    // points_o[1] = viewspace_points[1].xyz;
-    // points_o[2] = viewspace_points[2].xyz;
-    // points_o[3] = viewspace_points[3].xyz;
-    // ClipQuadToHorizon(points_o, n);
-    // for (int i = 0; i < n; ++i)
-    // {
-    //     points_o[i].xyz = normalize(points_o[i].xyz);
-    // }
-
 
     vec3 vsum = integrate_lambertian_hemisphere(points_o, n);
     float len = length(vsum);
@@ -465,34 +455,37 @@ main()
         sum_pl_radiance += pl_radiance;
     }
 
-    //////// SINGLE AREA LIGHT IMPLEMENTATION ///////////////
-    AreaLight al = area_lights[0];
+    // Area Lights
+    for (int light_index = 0; light_index < num_area_lights; ++light_index)
+    {
+        AreaLight al = area_lights[light_index];
 
-    float dot_NV = clamp(dot(N, V), 0.0, 1.0);
-    vec2 ltc_uv = vec2(roughness, sqrt(1.0 - dot_NV));
-    ltc_uv = ltc_uv * LUT_SCALE + LUT_BIAS;
+        float dot_NV = clamp(dot(N, V), 0.0, 1.0);
+        vec2 ltc_uv = vec2(roughness, sqrt(1.0 - dot_NV));
+        ltc_uv = ltc_uv * LUT_SCALE + LUT_BIAS;
 
-    vec4 t1 = texture(LTC1_texture, ltc_uv);
-    vec4 t2 = texture(LTC2_texture, ltc_uv);
+        vec4 t1 = texture(LTC1_texture, ltc_uv);
+        vec4 t2 = texture(LTC2_texture, ltc_uv);
 
-    mat3 Minv = mat3(
-        vec3(t1.x,  0., t1.y),
-        vec3(  1.,  1.,   0.),
-        vec3(t1.z, 0.,  t1.w)
-    );
-    
-    // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
-    vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, 4, al.is_double_sided == 1);
-    vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, 4, al.is_double_sided == 1);
-    
-    // GGX BRDF shadowing and Fresnel
-    // t2.x: shadowedF90 (F90 normally it should be 1.0)
-    // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
-    // TODO: sum_arealight_radiance = Calculate the specular and result
-    vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
-    specular *= F0 * t2.x + (1.0 - F0) * t2.y;
+        mat3 Minv = mat3(
+            vec3(t1.x,  0., t1.y),
+            vec3(  1.,  1.,   0.),
+            vec3(t1.z, 0.,  t1.w)
+        );
+        
+        // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
+        vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, 4, al.is_double_sided == 1);
+        vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, 4, al.is_double_sided == 1);
+        
+        // GGX BRDF shadowing and Fresnel
+        // t2.x: shadowedF90 (F90 normally it should be 1.0)
+        // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
+        // TODO: sum_arealight_radiance = Calculate the specular and result
+        vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
+        specular *= F0 * t2.x + (1.0 - F0) * t2.y;
 
-    sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
+        sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
+    }
 
     // Add ambient light
     vec3 ambient_color = vec3(0.03);//vec3(0.01);
