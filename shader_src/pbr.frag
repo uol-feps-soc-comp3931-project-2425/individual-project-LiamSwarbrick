@@ -459,7 +459,6 @@ main()
         // GGX BRDF shadowing and Fresnel
         // t2.x: shadowedF90 (F90 normally it should be 1.0)
         // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
-        // TODO: sum_arealight_radiance = Calculate the specular and result
         vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
         specular *= F0 * t2.x + (1.0 - F0) * t2.y;
 

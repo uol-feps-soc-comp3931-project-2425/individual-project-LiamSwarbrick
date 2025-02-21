@@ -88,8 +88,6 @@ aabb_aabb_intersect(vec3 aabb1_min, vec3 aabb1_max,
 bool
 test_arealight(uint i, Cluster cluster)
 {
-     // TODO: See whether its best to have both of these checks, or only one of them, and which one...
-
     // Early reject if not inside AABB of light emission
     if (!aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz,
             cluster.min_point.xyz, cluster.max_point.xyz))
@@ -97,7 +95,27 @@ test_arealight(uint i, Cluster cluster)
         return false;
     }
 
-    // Precise sphere test:
+    // Half space rejection for single sided area lights
+    if (area_lights[i].is_double_sided == 0)
+    {
+        vec3 a = area_lights[i].points_viewspace[0].xyz;
+        vec3 b = area_lights[i].points_viewspace[1].xyz;
+        vec3 c = area_lights[i].points_viewspace[2].xyz;
+        vec3 light_normal = cross(b - a, c - a);
+
+        vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+        vec3 cluster_half_dimensions = (cluster.max_point.xyz - cluster.min_point.xyz) * 0.5;
+        float margin = dot(cluster_half_dimensions, abs(light_normal));
+        
+        vec3 polygon_centroid = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
+
+        if (dot(cluster_center - polygon_centroid, light_normal) + margin < 0.0)
+        {
+            return false;
+        }
+    }
+
+    // More precise sphere test:
     vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
     return sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
 }

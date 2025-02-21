@@ -46,3 +46,10 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
     r = sqrt(...)
     */
 }
+
+
+MY CLUSTERED AREA LIGHT Half space solving:
+- I first used the cluster center for the dot product, but this gave artefacts along the seam,
+  I figured I'd have to check if any of the 4 cluster corners were in the half space
+   which would've required 4 dot products, but I realised I could add a margin to the half space
+   comparison, this margin is simply another dot product, so this solution uses 2 dot products instead.
