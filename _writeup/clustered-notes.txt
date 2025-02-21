@@ -1,0 +1,48 @@
+voxel_clusters_viewspace.comp:
+/* 
+It seems DOOM 2016 uses 16x9x24 exponentially mapped clusters, avalanche uses 64x64x16 exponentially mapped.
+Doom probably uses larger clusters since the game is all close range viewing. avalanche's games are more open world and you don't want too many lights 
+per cluster which would occur at far clusters if the clusters are too big.
+*/
+// TODO: Try froxel shaped clusters
+// NOTE for thesis: what are the benefits of this:
+// - tighter fit means less computation per fragment but more expensive cluster compute shader
+// Which to use: read the papers, probably implement both and do performance comparison: two compute shaders -> measure performance.
+// Cluster XYZ dimensions: 16x9x24 as doom does, but how much does this matter, how much does the granualirty matter - especially on integrated graphics?
+// Integrated graphics: should we have more granular compute shader because even like 10 point lights per fragment kills performance
+//   So would be interesting to see what percentage of frame time is spent on clustered shading: implement performance metrics
+// Avalanche Engine uses 4 light indices per 64x64x16 tiles
+
+
+/*
+    An upper bound area approximation is need to predict the radius of the
+    sphere of influence approximation for the area light.
+    Upper bound is necessary because we don't want to under-assign to clusters
+    during light culling since that would cause visual artefacts.
+    */
+
+see math notes for this...
+float
+calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable)
+{
+    float r = al->color_rgb_intensity_a[0];
+    float b = al->color_rgb_intensity_a[1];
+    float g = al->color_rgb_intensity_a[2];
+    float intensity = al->color_rgb_intensity_a[3];
+    float flux = ((r + b + g) / 3.0f) * intensity * area;
+
+    // Inverse square law with hemispherical falloff adjustment
+    return sqrtf(flux / (2.0f * M_PI * min_perceivable));
+
+    /* Math notes:
+    For sphere E = flux/(4*pi*r^2) for distance r from a point light
+    For an area light the emission is hemispherical: E= flux / (2*pi*r^2)
+    NOTE: The is_double_sided property is simply used to emit the same light in both directions, we don't
+        normalize our radius according to it.
+
+    Solve for r:
+    min_perceivable_intensity = flux / (2 * pi * r^2)
+    r^2 = flux/(2 * pi * min_perceivable)
+    r = sqrt(...)
+    */
+}

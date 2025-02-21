@@ -1,5 +1,5 @@
-#ifndef LIAM_SUNTEMPLE_POINT_LIGHT_DATA_H
-#define LIAM_SUNTEMPLE_POINT_LIGHT_DATA_H
+#ifndef POINT_LIGHT_DATA_H
+#define POINT_LIGHT_DATA_H
 #include <cglm/cglm.h>
 
 #define DISABLE_POINTLIGHTS
@@ -1922,4 +1922,4 @@ vec3 lostempire_pointlight_positions[] = {
 #endif  // DISABLE_POINTLIGHTS
 };
 
-#endif  // LIAM_SUNTEMPLE_POINT_LIGHT_DATA_H
+#endif  // POINT_LIGHT_DATA_H

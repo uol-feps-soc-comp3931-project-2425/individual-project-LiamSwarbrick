@@ -1,20 +1,6 @@
 #version 460 core
 
-/* 
-It seems DOOM 2016 uses 16x9x24 exponentially mapped clusters, avalanche uses 64x64x16 exponentially mapped.
-Doom probably uses larger clusters since the game is all close range viewing. avalanche's games are more open world and you don't want too many lights 
-per cluster which would occur at far clusters if the clusters are too big.
-*/
-// TODO: Try froxel shaped clusters
-// NOTE for thesis: what are the benefits of this:
-// - tighter fit means less computation per fragment but more expensive cluster compute shader
-// Which to use: read the papers, probably implement both and do performance comparison: two compute shaders -> measure performance.
-// Cluster XYZ dimensions: 16x9x24 as doom does, but how much does this matter, how much does the granualirty matter - especially on integrated graphics?
-// Integrated graphics: should we have more granular compute shader because even like 10 point lights per fragment kills performance
-//   So would be interesting to see what percentage of frame time is spent on clustered shading: implement performance metrics
-// Avalanche Engine uses 4 light indices per 64x64x16 tiles
-
-#define EFFICIENT_WORKGROUPS
+#define EFFICIENT_WORKGROUPS  // Work group sizes with better sizes for hopefully better performance
 #ifdef EFFICIENT_WORKGROUPS
 
 #ifndef CLUSTER_GRID_SIZE_X
@@ -37,8 +23,10 @@ struct Cluster
 {
     vec4 min_point;
     vec4 max_point;
-    uint count;
-    uint light_indices[CLUSTER_MAX_LIGHTS];
+    uint point_count;
+    uint area_count;
+    uint point_indices[CLUSTER_MAX_LIGHTS/2];
+    uint area_indices[CLUSTER_MAX_LIGHTS/2];
 };
 
 layout (std430, binding = 1) restrict buffer cluster_ssbo

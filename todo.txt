@@ -1,0 +1,24 @@
+
+Should specular and diffuse clustering be different?
+
+Also need to stress test on massive open plane..
+So a small number of lights per pixel, but a vast world
+so that the compute shader is stress tested more.
+
+In writeup mention compute shader batch size testing maybe
+
+Talk about implementation trying to utilize boolean vector operations in glsl
+- like bvec lessThanEqual(vec x, vec y) and all() functions
+
+
+Can do writeup in order of implementation if the section headings make that simple:
+- glTF pbr renderer with point lights....
+- point light clustered shading
+- lambertian area lights implementation
+- ltc-based area lights
+- area lights with cluster shading.
+
+
+// TODO: Maybe instead of using 3D AABB surface area as upper bound for polygon area,
+    // find the polygons plane with the first 3 points (since n >= 3) then project onto 2D
+    // and use the 2D AABB (could be a tighter upper bound but more costly cpu side which might be bad)

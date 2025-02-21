@@ -26,19 +26,22 @@ layout (std430, binding = 0) restrict buffer point_light_ssbo
     PointLight point_lights[];
 };
 
-
+// TODO: Remove MAX_NGON since I'm not clipping in the old way anymore...
+//       Leaving note here for now so I can maybe mention this in writeup
 #define MAX_NGON 15  // NOTE: This is the max ngon size after clipping (which can introduce more vertices)
                      // A size of 15 can handle a worst case clipping of a 10-gon - derivation in my writeup.
                      // A decagon can produce a star shaped area light similar to the figure in the Heitz paper.
 // const int MAX_UNCLIPPED_NGON = (3 * MAX_NGON) / 2;
-#define MAX_UNCLIPPED_NGON 10  // 4
-
+#define MAX_UNCLIPPED_NGON 10
 struct AreaLight
 {
     vec4 color_rgb_intensity_a;
     int n;
     int is_double_sided;
     float _packing0, _packing1;
+    vec4 aabb_min;
+    vec4 aabb_max;
+    vec4 sphere_of_influence_center_xyz_radius_w;
     vec4 points_viewspace[MAX_UNCLIPPED_NGON];  // 4th component unused, vec3[] would be packed the same way but vec3 is implemented wrong on some drivers
 };
 
@@ -77,8 +80,10 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     {
         vec4 min_point;
         vec4 max_point;
-        uint count;
-        uint light_indices[CLUSTER_MAX_LIGHTS];
+        uint point_count;
+        uint area_count;
+        uint point_indices[CLUSTER_MAX_LIGHTS/2];
+        uint area_indices[CLUSTER_MAX_LIGHTS/2];
     };
 
     layout (std430, binding = 1) restrict buffer cluster_ssbo
@@ -91,8 +96,6 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     layout (location = 18) uniform float far;
     layout (location = 19) uniform uvec3 grid_size;
     layout (location = 20) uniform uvec2 screen_dimensions;
-
-    layout (location = 21) uniform uint num_area_lights;  //TODO: REMOVE THIS AFTER IMPLEMENTING CLUSTERED SHADING FOR AREA LIGHTS
 #else
     layout (location = 9) uniform uint num_point_lights;
     layout (location = 21) uniform uint num_area_lights;
@@ -157,76 +160,45 @@ Why is Sutherland-Hodgman algorithm acceptable?
 - We only want one polygon returned, overlapping edges is okay for rendering (not for shadows as per the wiki) and we won't input crazy polygons anyway.
 - Our 'clipping polygon' is simply the z>=0 half space, which means our inner loop has only one edge check. Simple and efficient.
 */
-void
-clip_polygon_to_hemisphere(vec4 points[MAX_UNCLIPPED_NGON], int in_n, out vec3 outpoints[MAX_NGON], out int out_n)
-{
-    // Run through the Sutherland–Hodgman algorithm to clip to the half-space z >= 0.0
-    out_n = 0;
+// void
+// clip_polygon_to_hemisphere(vec4 points[MAX_UNCLIPPED_NGON], int in_n, out vec3 outpoints[MAX_NGON], out int out_n)
+// {
+//     // Run through the Sutherland–Hodgman algorithm to clip to the half-space z >= 0.0
+//     out_n = 0;
 
-    for (int i = 0; i < in_n; ++i)
-    {
-        // int j = (i + 1) % in_n;
-        int j = i + 1;
-        if (j == in_n)
-        {
-            j = 0;
-        }
-        vec3 current = points[i].xyz;
-        vec3 next = points[j].xyz;
+//     for (int i = 0; i < in_n; ++i)
+//     {
+//         // int j = (i + 1) % in_n;
+//         int j = i + 1;
+//         if (j == in_n)
+//         {
+//             j = 0;
+//         }
+//         vec3 current = points[i].xyz;
+//         vec3 next = points[j].xyz;
 
-        bool current_inside = current.z >= 0.0;
-        bool next_inside = next.z >= 0.0;
+//         bool current_inside = current.z >= 0.0;
+//         bool next_inside = next.z >= 0.0;
 
-        // 4 cases (including nothing)
-        if (current_inside && next_inside)
-        {
-            outpoints[out_n++] = next;
-        }
-        else if (current_inside != next_inside)
-        {
-            // intersecting_point = p1 + t*(p2-p1) = (x,y,0)^T implies t = z1 / (z1 - z2))
-            float t = current.z / (current.z - next.z);
-            vec3 intersect = mix(current, next, t);
-            outpoints[out_n++] = intersect;
+//         // 4 cases (including nothing)
+//         if (current_inside && next_inside)
+//         {
+//             outpoints[out_n++] = next;
+//         }
+//         else if (current_inside != next_inside)
+//         {
+//             // intersecting_point = p1 + t*(p2-p1) = (x,y,0)^T implies t = z1 / (z1 - z2))
+//             float t = current.z / (current.z - next.z);
+//             vec3 intersect = mix(current, next, t);
+//             outpoints[out_n++] = intersect;
 
-            if (next_inside)
-            {
-                outpoints[out_n++] = next;
-            }
-        }
-    }
-
-    // // Start with final edge pair to avoid needing mod n in loop
-    // vec3 prev_point = points[in_n-1].xyz;
-    // vec3 current_point = points[0].xyz;
-
-    // for (int i = 0; i < in_n-1; ++i)
-    // {
-    //     // intersecting_point = p1 + k*(p2-p1) = (x,y,0)^T implies k = z1 / (z1 - z2)) = prev/(prev-current)
-    //     float k = prev_point.z / (prev_point.z - current_point.z);
-    //     vec3 intersecting_point = current_point + k * (prev_point - current_point);
-
-    //     bool current_point_inside_hemisphere = current_point.z >= 0.0;
-    //     bool prev_point_inside_hemisphere = prev_point.z >= 0.0;
-
-    //     if (current_point_inside_hemisphere)
-    //     {
-    //         if (!prev_point_inside_hemisphere)
-    //         {
-    //             outpoints[out_n++] = normalize(intersecting_point);
-    //         }
-    //         outpoints[out_n++] = normalize(current_point);
-    //     }
-    //     else if (prev_point_inside_hemisphere)
-    //     {
-    //         outpoints[out_n++] = normalize(intersecting_point);
-    //     }
-
-    //     // set next iteration current edge (a,b)
-    //     prev_point = points[i].xyz;
-    //     current_point = points[i+1].xyz;
-    // }
-}
+//             if (next_inside)
+//             {
+//                 outpoints[out_n++] = next;
+//             }
+//         }
+//     }
+// }
 
 vec3
 integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
@@ -417,12 +389,13 @@ main()
     uvec3 tile = uvec3(gl_FragCoord.xy / tile_size, tile_z);
     uint tile_index = tile.x + (tile.y * grid_size.x) + (tile.z * grid_size.x * grid_size.y);
 
-    uint num_point_lights = clusters[tile_index].count;
+    uint num_point_lights = clusters[tile_index].point_count;
+    uint num_area_lights = clusters[tile_index].area_count;
     
     // Point lights
     for (int i = 0; i < num_point_lights; ++i)
     {
-        uint light_index = clusters[tile_index].light_indices[i];
+        uint light_index = clusters[tile_index].point_indices[i];
 #else
     for (int light_index = 0; light_index < num_point_lights; ++light_index)
     {
@@ -456,8 +429,14 @@ main()
     }
 
     // Area Lights
+#ifdef ENABLE_CLUSTERED_SHADING
+    for (int i = 0; i < num_area_lights; ++i)
+    {
+        uint light_index = clusters[tile_index].area_indices[i];
+#else
     for (int light_index = 0; light_index < num_area_lights; ++light_index)
     {
+#endif  // ENABLE_CLUSTERED_SHADING
         AreaLight al = area_lights[light_index];
 
         float dot_NV = clamp(dot(N, V), 0.0, 1.0);
@@ -502,9 +481,10 @@ main()
     // frag_color = mix(vec4(N, alpha), vec4(metallic_roughness.rgb, alpha), 0.5);
 
     float amount_red = float(num_point_lights/20.0);
+    float amount_blue = float(num_area_lights/5.0);
     // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     
-    frag_color = vec4(amount_red, metallic_roughness.g, metallic_roughness.b, alpha);
+    frag_color = vec4(amount_red, metallic_roughness.g, amount_blue, alpha);
 #else
     // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
     frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);

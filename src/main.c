@@ -38,10 +38,11 @@
 #include <math.h>
 
 #include "basic_types.h"
-#include "point_light_data.h"
-#include "area_light_shape_data.h"
-
+#include "pointlight.h"
+#include "arealight.h"
 #include "ltc_matrix.h"
+
+#include "point_light_data.h"
 
 typedef struct FreeCamera
 {
@@ -152,147 +153,6 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-typedef struct PointLight
-{
-    // Don't worry the glsl std430 version of PointLight doesn't use vec3s
-    vec3 position;
-    float _padding0;  // w component here is used for range but only range is calculated when uploading to shader
-
-    vec3 color;
-    float intensity;
-}
-PointLight;
-
-float
-calculate_point_light_range(float point_light_intensity, float min_perceivable_intensity,
-    float q, float l, float c)
-{
-    /* Attenuation Formula given constants and range r:
-    *  min_intensity = source_intensity / (c + l*r + q*r*r)
-    *  
-    *  Rearrange for r.
-    *  source_intensity/min_intensity = c + l*r + q*r*r
-    *  qr^2 + lr + (c-source_intensity/min_intensity) = 0
-    *
-    *  Quadratic formula to get range that minimum intensity is hit (positive solution)
-    *  r = (-l + sqrt(l^2 - 4*q*(c-source_intensity/min_intensity)) )/(2q)
-    */
-    float discriminant = l*l - 4.0f * q * (c - point_light_intensity / min_perceivable_intensity);
-    
-    float point_light_range;
-    if (discriminant >= 0.0f)
-    {
-        point_light_range = (-l + sqrtf(discriminant)) / (2.0f * q);
-    }
-    else
-    {
-        point_light_range = 0.0f;
-    }
-
-    return point_light_range;
-}
-
-#define MAX_UNCLIPPED_NGON 10
-typedef struct AreaLight
-{
-    vec4 color_rgb_intensity_a;
-    int n;
-    int is_double_sided;
-    float _packing0, _packing1;
-    vec4 points_worldspace[MAX_UNCLIPPED_NGON];
-}
-AreaLight;
-
-// void
-// init_area_light(AreaLight* al, vec4 color_rgb_intensity_a, int n, int is_double_sided)
-// {
-//     AreaLight arealight = { 0 };
-//     glm_vec4_copy(color_rgb_intensity_a, arealight.color_rgb_intensity_a);
-//     arealight.n = n;
-//     arealight.is_double_sided = is_double_sided;
-
-//     memcpy(al, &arealight, sizeof(arealight));
-// }
-
-void
-transform_area_light(AreaLight* al, mat4 transform)
-{
-    for (int i = 0; i < al->n; ++i)
-    {
-        glm_mat4_mulv(transform, al->points_worldspace[i], al->points_worldspace[i]);
-    }
-}
-
-AreaLight
-make_random_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
-{
-    AreaLight al;
-    vec3 rgb; hsv_to_rgb(rng_rangef(0.0f, 1.0f), 1.0f, 1.0f, rgb);
-    al.color_rgb_intensity_a[0] = rgb[0];
-    al.color_rgb_intensity_a[1] = rgb[1];
-    al.color_rgb_intensity_a[2] = rgb[2];
-    al.color_rgb_intensity_a[3] = 10.0f;//rng_rangef(5.0f, 10.0f);
-
-    // int n = (rand() % 4) + 3;  // Plus 3 since we want triangles and above
-    if (n == 6)  // Special case for star
-    {
-        n = 10;
-    }
-
-    al.n = n;
-    al.is_double_sided = is_double_sided;
-
-    if (n == 3)
-    {
-        memcpy(al.points_worldspace, triangle_points, sizeof(triangle_points));
-    }
-    else if (n == 4)
-    {
-        memcpy(al.points_worldspace, quad_points, sizeof(quad_points));
-    }
-    else if (n == 5)
-    {
-        memcpy(al.points_worldspace, pentagon_points, sizeof(pentagon_points));
-    }
-    else if (n == 10)
-    {
-        memcpy(al.points_worldspace, star_points, sizeof(star_points));
-    }
-    
-    mat4 scale = GLM_MAT4_IDENTITY_INIT;
-    glm_scale(scale, (vec3){ rng_rangef(2.0f, 5.0f), rng_rangef(2.0f, 5.0f), rng_rangef(2.0f, 5.0f) });
-
-    mat4 rot = GLM_MAT4_IDENTITY_INIT;
-    versor q;
-    vec3 up = {0.0f, 0.0f, 1.0f};
-
-    glm_quat_from_vecs(up, normal_vector, q);
-    glm_quat_mat4(q, rot);
-
-    mat4 move;
-    glm_translate_make(move, position);
-
-    mat4 transform = GLM_MAT4_IDENTITY_INIT;
-    glm_mul(move, rot, transform);
-    glm_mul(transform, scale, transform);
-
-    transform_area_light(&al, transform);
-
-    // The transform uses homogeneous coordinates but I simply rely on x,y,z in the shader instead of w
-    // so in order for the rendered light sources to match the location of the light reflections we must make w=1...
-    for (int i = 0; i < n; ++i)
-    {
-        float w = al.points_worldspace[i][3];
-        al.points_worldspace[i][0] /= w;
-        al.points_worldspace[i][1] /= w;
-        al.points_worldspace[i][2] /= w;
-        al.points_worldspace[i][3] = 1.0f;
-    }
-
-    return al;
-}
-
-
 #define CLUSTER_GRID_SIZE_X 32//16 
 #define CLUSTER_GRID_SIZE_Y 18//9  
 #define CLUSTER_GRID_SIZE_Z 24
@@ -303,11 +163,13 @@ typedef struct  ClusterMetaData
 {  // Manually padded so size is same as the std430 glsl struct Cluster
     vec4 min_point;
     vec4 max_point;
-    u32 count;
-    f32 _padding[3];
+    u32 point_count;
+    u32 area_count;
+    f32 _padding[2];
     
-    // light_indices size can be changed at runtime so isn't stored here
-    // u32 light_indices[CLUSTER_MAX_LIGHTS];
+    // light indices size can be changed at runtime so isn't stored here
+    // u32 light_indices[CLUSTER_MAX_LIGHTS/2];
+    // u32 area_indices[CLUSTER_MAX_LIGHTS/2]
 }
 ClusterMetaData;
 
@@ -334,7 +196,7 @@ typedef struct Scene
     f32 sun_intensity;
     vec3 sun_color;
 
-    // Point Light attenuation parameters
+    // Light attenuation parameters
     float attenuation_constant;
     float attenuation_linear;
     float attenuation_quadratic;
@@ -907,7 +769,7 @@ load_gltf_scene(const char* filename)
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_AREALIGHTS, scene.area_light_ssbo);
 
     // Init empty cluster grid of default size (any resizing happens in reload_shaders())
-    u32 cluster_size = sizeof(ClusterMetaData) + sizeof(u32) * CLUSTER_DEFAULT_MAX_LIGHTS;
+    u32 cluster_size = sizeof(ClusterMetaData) + sizeof(u32) * (CLUSTER_DEFAULT_MAX_LIGHTS);
     glCreateBuffers(1, &scene.cluster_grid_ssbo);
     glNamedBufferData(scene.cluster_grid_ssbo, cluster_size * NUM_CLUSTERS, NULL, GL_STATIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, scene.cluster_grid_ssbo);
@@ -1437,7 +1299,7 @@ draw_gltf_scene(Scene* scene)
         // TODO: Also implement froxel clusters for comparison?
 
         // Compute viewspace cluster AABBs with a compute shader
-        glUseProgram(compute_clusters_shader);
+        glUseProgram(compute_clusters_shader);  // voxel_clusters_viewspace.comp
 
         mat4 inv_proj;
         glm_mat4_inv(camera->projection_matrix, inv_proj);
@@ -1459,10 +1321,11 @@ draw_gltf_scene(Scene* scene)
         // glMemoryBarrier(GL_ALL_BARRIER_BITS);
 
         // Assign lights to clusters with a second compute shader
-        glUseProgram(light_assignment_shader);
+        glUseProgram(light_assignment_shader);  // lights_to_clusters.comp
 
         // glProgramUniformMatrix4fv(light_assignment_shader, 0, 1, GL_FALSE, (f32*)camera->view_matrix);
         glProgramUniform1ui(light_assignment_shader, 1, num_point_lights);
+        glProgramUniform1ui(light_assignment_shader, 2, num_area_lights);
 
         #define LIGHT_ASSIGNMENT_BATCH_SIZE 512//128
         const int dispatched_workgroups = NUM_CLUSTERS / LIGHT_ASSIGNMENT_BATCH_SIZE;
@@ -1484,9 +1347,6 @@ draw_gltf_scene(Scene* scene)
         glProgramUniform1f(shader_program, PBR_LOC_far, camera->far_plane);
         glProgramUniform3ui(shader_program, PBR_LOC_grid_size, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z);
         glProgramUniform2ui(shader_program, PBR_LOC_screen_dimensions, camera->width, camera->height);
-
-        // TODO: Remove here and in shader after area light clustered shading working
-        glProgramUniform1ui(shader_program, PBR_LOC_num_area_lights, num_area_lights);
     }
     else
     {
@@ -1495,80 +1355,6 @@ draw_gltf_scene(Scene* scene)
     }
 
     // Compute and upload light data
-
-    // AreaLight al;
-    // glm_vec4_copy((vec4){ 6.299164, 0.518495, -1.259223, 1.0f }, al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){ 6.299164, 5.789216, -1.259223, 1.0f }, al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ 7.287081, 5.789216, 0.096623,  1.0f }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ 7.287081, 0.587679, 0.096623,  1.0f }, al.points_worldspace[3]);
-    
-    // glm_vec4_copy((vec4){  1.241569, -0.881308, -8.891124, 1.0f }, al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){  1.241569, 1.391896, -8.891124,  1.0f }, al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ -0.448474, 0.265649, -9.679999,  1.0f }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ -0.448474, -1.873153, -9.679999, 1.0f }, al.points_worldspace[3]);
-    
-    // Pentagon (house shape above suntemple fire)
-    // init_area_light(&al, (vec4){ 0.9f, 0.5f, 0.4f, 10.0f }, 5, 0);
-    // init_area_light(&al, (vec4){ 0.5f, 0.9f, 0.6f, 13.0f }, 5, 0);
-    // glm_vec4_copy((vec4){ -7.776714, -0.945969, -15.261868,  1.0f }, al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){ -7.841511, -0.945969, -16.201321,  1.0f }, al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ -7.841511,  0.184049, -16.201321,  1.0f }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ -7.804751,  0.926187, -15.668361,  1.0f }, al.points_worldspace[3]);
-    // glm_vec4_copy((vec4){ -7.776423, 0.055773, -15.257641,   1.0f }, al.points_worldspace[4]);
-
-    // init_area_light(&al, (vec4){ 0.9f, 0.5f, 0.4f, 10.0f }, 6, 0);
-    // glm_vec4_copy((vec4){ 1.300821, -2.330142, -10.358570,  1.0f }, al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){ 0.306081, 0.285069, -10.379557  ,1.0f }, al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ -0.489325, -1.647101, -10.396337  ,1.0f }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ -0.413045, -2.390481, -10.394728 , 1.0f }, al.points_worldspace[3]);
-    // glm_vec4_copy((vec4){ 1.458059, -0.842530, -10.363461 , 1.0f }, al.points_worldspace[4]);
-    // glm_vec4_copy((vec4){ -0.745309, -0.842530, -10.409945 , 1.0f }, al.points_worldspace[5]);
-    
-    // init_area_light(&al, (vec4){ 0.9f, 1.0f, 0.1f, 10.0f }, 10, 1);
-    // glm_vec4_copy((vec4){ -0.5f, -1.0f, 0.0f,   1.0f },  al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){ 0.0f, -0.5f, 0.0f,    1.0f },  al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ 0.5f, -1.0f, 0.0f,    1.0f }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ 0.35f, -0.35f, 0.0f,  1.0f }, al.points_worldspace[3]);
-    // glm_vec4_copy((vec4){ 1.0f, 0.35f, 0.0f,    1.0f }, al.points_worldspace[4]);
-    // glm_vec4_copy((vec4){ 0.35f, 0.35f, 0.0f,   1.0f }, al.points_worldspace[5]);
-    // glm_vec4_copy((vec4){ 0.0f, 1.0f, 0.0f,     1.0f },  al.points_worldspace[6]);
-    // glm_vec4_copy((vec4){ -0.35f, 0.35f, 0.0f,  1.0f },  al.points_worldspace[7]);
-    // glm_vec4_copy((vec4){ -1.0f, 0.35f, 0.0f,   1.0f },  al.points_worldspace[8]);
-    // glm_vec4_copy((vec4){ -0.35f, -0.35f, 0.0f, 1.0f },  al.points_worldspace[9]);
-
-    // glm_vec4_copy((vec4){ 8.416873, 30.932301, -4.502289 ,  1.0f },  al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){ 2.132803, 30.932301, -1.908047 ,  1.0f },  al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ -2.407074, 30.932301, -3.920407 ,  1.0f }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ -0.742027, 30.932301, -0.312687 ,  1.0f }, al.points_worldspace[3]);
-    // glm_vec4_copy((vec4){ -3.733868, 30.932301, 1.867314 ,  1.0f }, al.points_worldspace[4]);
-    // glm_vec4_copy((vec4){ -0.576520, 30.932301, 2.629122 ,  1.0f }, al.points_worldspace[5]);
-    // glm_vec4_copy((vec4){ 0.956355, 30.932301, 5.706156 ,  1.0f },  al.points_worldspace[6]);
-    // glm_vec4_copy((vec4){ 3.333493, 30.932301, 3.201362 ,  1.0f },  al.points_worldspace[7]);
-    // glm_vec4_copy((vec4){ 9.075382, 30.932301, 3.446537 ,  1.0f },  al.points_worldspace[8]);
-    // glm_vec4_copy((vec4){ 5.239176, 30.932301, 0.671952 ,  1.0f },  al.points_worldspace[9]);
-
-    // glm_vec4_copy((vec4){ 1.356250, -2.430814, -10.065420 , 1.0f },  al.points_worldspace[0]);
-    // glm_vec4_copy((vec4){ 0.290488, -2.033834, -10.041268 , 1.0f },  al.points_worldspace[1]);
-    // glm_vec4_copy((vec4){ -0.576180, -2.560419, -10.021628, 1.0f  }, al.points_worldspace[2]);
-    // glm_vec4_copy((vec4){ -0.573925, -2.008282, -10.021679, 1.0f  }, al.points_worldspace[3]);
-    // glm_vec4_copy((vec4){ -1.107218, -1.740598, -10.009594, 1.0f  }, al.points_worldspace[4]);
-    // glm_vec4_copy((vec4){ -0.498722, -1.197681, -10.023383, 1.0f  }, al.points_worldspace[5]);
-    // glm_vec4_copy((vec4){ 0.040278, -0.400376, -10.035598 , 1.0f },  al.points_worldspace[6]);
-    // glm_vec4_copy((vec4){ 0.296327, -1.134671, -10.041400 , 1.0f },  al.points_worldspace[7]);
-    // glm_vec4_copy((vec4){ 1.169059, -1.134671, -10.061178 , 1.0f },  al.points_worldspace[8]);
-    // glm_vec4_copy((vec4){ 0.431561, -1.864982, -10.044465 , 1.0f },  al.points_worldspace[9]);
-
-    // mat4 al_transform = GLM_MAT4_IDENTITY_INIT;
-    // glm_translate(al_transform, (vec3){ -0.57f, -1.5f, -10.0f });
-    // glm_mat4_scale(al_transform, 0.3f);  // WARNING: This would scale the w component and cause mismatch between polygon rendered and actual polygon used in computation
-    // Instead do this:
-    // al_transform[0][0] = 0.3f;
-    // al_transform[1][1] = 0.3f;
-    // al_transform[2][2] = 0.3f;
-
-    // glm_rotate_x(al_transform, program.time*2.0f, al_transform);
-    // glm_rotate_y(al_transform, program.time, al_transform);
-    // transform_area_light(&al, al_transform);
     {
         // Upload Directional Light in View Space
         {
@@ -1654,7 +1440,6 @@ draw_gltf_scene(Scene* scene)
         }
 
         // Upload Area lights in View Space
-        // TODO: Integrate with clustered shading
         {   
             // Update area lights buffer
             f32* mapped_arealight_ssbo = (float*)glMapNamedBuffer(scene->area_light_ssbo, GL_WRITE_ONLY);
@@ -1670,8 +1455,63 @@ draw_gltf_scene(Scene* scene)
                     // glm_vec4_copy(area_light->points_worldspace[vertex], points_viewspace[vertex]);
                 }
                 
-                // Compute bounding box:
-                // TODO:
+                // Compute bounding box and sphere:
+                vec4 aabb_min;
+                vec4 aabb_max;
+                vec4 sphere_of_influence;
+                {
+                    // Find average of points
+                    vec3 centroid;
+                    for (int i = 0; i < area_light->n; ++i)
+                    {
+                        glm_vec3_add(centroid, points_viewspace[i], centroid);
+                    }
+                    glm_vec3_scale(centroid, 1.0f / (float)area_light->n, centroid);
+                    
+                    // Find point with max distance from centroid
+                    float geo_radius = 0.0f;  
+                    for (int i = 0; i < area_light->n; ++i)
+                    {
+                        float distance = glm_vec3_distance(centroid, points_viewspace[i]);
+                        if (distance > geo_radius)
+                        {
+                            geo_radius = distance;
+                        }
+                    }
+
+                    float area = polygon_area_aabb_upper_bound(area_light);
+                    float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity);
+                    
+                    sphere_of_influence[0] = centroid[0];
+                    sphere_of_influence[1] = centroid[1];
+                    sphere_of_influence[2] = centroid[2];
+                    sphere_of_influence[3] = geo_radius + influence_radius;
+
+                    // Also use AABB for early rejection in light-cluster assignment
+                    glm_vec4_copy(points_viewspace[0], aabb_min);
+                    glm_vec4_copy(points_viewspace[0], aabb_max);
+                    for (int i = 0; i < area_light->n; ++i)
+                    {
+                        if (aabb_min[0] > points_viewspace[i][0])
+                            aabb_min[0] = points_viewspace[i][0];
+                        if (aabb_max[0] < points_viewspace[i][0])
+                            aabb_max[0] = points_viewspace[i][0];
+                        
+                        if (aabb_min[1] > points_viewspace[i][1])
+                            aabb_min[1] = points_viewspace[i][1];
+                        if (aabb_max[1] < points_viewspace[i][1])
+                            aabb_max[1] = points_viewspace[i][1];
+
+                        if (aabb_min[2] > points_viewspace[i][2])
+                            aabb_min[2] = points_viewspace[i][2];
+                        if (aabb_max[2] < points_viewspace[i][2])
+                            aabb_max[2] = points_viewspace[i][2];
+                    }
+
+                    vec4 influence_vec = { influence_radius, influence_radius, influence_radius, 0.0f };
+                    glm_vec4_sub(aabb_min, influence_vec, aabb_min);
+                    glm_vec4_add(aabb_max, influence_vec, aabb_max);
+                }
 
                 float* mapped_arealight = &mapped_arealight_ssbo[area_id * sizeof(AreaLight) / sizeof(f32)];
 
@@ -1685,14 +1525,30 @@ draw_gltf_scene(Scene* scene)
                 ((int*)mapped_arealight)[5] = area_light->is_double_sided;
                 mapped_arealight[6] = area_light->_packing0;
                 mapped_arealight[7] = area_light->_packing1;
+                
+                // Set mapped cluster parameters
+                mapped_arealight[8]  = aabb_min[0];
+                mapped_arealight[9]  = aabb_min[1];
+                mapped_arealight[10] = aabb_min[2];
+                mapped_arealight[11] = aabb_min[3];
+
+                mapped_arealight[12] = aabb_max[0];
+                mapped_arealight[13] = aabb_max[1];
+                mapped_arealight[14] = aabb_max[2];
+                mapped_arealight[15] = aabb_max[3];
+
+                mapped_arealight[16] = sphere_of_influence[0];
+                mapped_arealight[17] = sphere_of_influence[1];
+                mapped_arealight[18] = sphere_of_influence[2];
+                mapped_arealight[19] = sphere_of_influence[3];
 
                 // Set mapped area light points
                 for (int vertex = 0; vertex < MAX_UNCLIPPED_NGON; ++vertex)
                 {
-                    mapped_arealight[8 + vertex*4 + 0] = points_viewspace[vertex][0];
-                    mapped_arealight[8 + vertex*4 + 1] = points_viewspace[vertex][1];
-                    mapped_arealight[8 + vertex*4 + 2] = points_viewspace[vertex][2];
-                    mapped_arealight[8 + vertex*4 + 3] = points_viewspace[vertex][3];
+                    mapped_arealight[20 + vertex*4 + 0] = points_viewspace[vertex][0];
+                    mapped_arealight[20 + vertex*4 + 1] = points_viewspace[vertex][1];
+                    mapped_arealight[20 + vertex*4 + 2] = points_viewspace[vertex][2];
+                    mapped_arealight[20 + vertex*4 + 3] = points_viewspace[vertex][3];
                 }
             }
             glUnmapNamedBuffer(scene->area_light_ssbo);
@@ -2336,10 +2192,12 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
      *      C      - Zoom In
      *      F1     - Toggle wireframe mode
      *      F2     - Toggle normals shaders
+     * 
+     *      Enter     - Spawn area light
+     *      Alt+Enter - Spawn point light
      */
 
     (void)scancode;
-    (void)mods;
 
     if (key == GLFW_KEY_ESCAPE && action == GLFW_PRESS)
     {
@@ -2350,9 +2208,9 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
     {
         printf("{ %f, %f, %f },\n", program.cam.pos[0], program.cam.pos[1], program.cam.pos[2]);
 
-        int shift_key = mods & GLFW_MOD_SHIFT;
+        int alt_key = mods & GLFW_MOD_ALT;
 
-        if (shift_key)
+        if (alt_key)
         {
             // Spawn point light at position
             PointLight pl = { 0 };
@@ -2367,9 +2225,12 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
         else
         {
             // Spawn area light at position
-            vec3 forward_vector = { 0.0f, 0.0f, -1.0f };
-            glm_vec3_rotate(forward_vector, program.cam.yaw, (vec3){ 0.0f, 1.0f, 0.0f });
-            AreaLight al = make_random_area_light(program.cam.pos, forward_vector, 0, program.last_number_key);
+            // Get full camera orientation from view matrix
+            vec4 view_forward = { 0.0f, 0.0f, -1.0f, 0.0f }; 
+            glm_mat4_mulv(program.cam.view_matrix, view_forward, view_forward);
+            vec3 true_forward; glm_vec3_normalize_to(view_forward, true_forward);
+
+            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, program.last_number_key);
             push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
             printf("light:%d.. %f, %f, %f\n", al.n, al.points_worldspace[0][0], al.points_worldspace[0][1], al.points_worldspace[0][2]);
         }
@@ -2522,6 +2383,8 @@ main(int argc, char** argv)
 
     program.render_as_wireframe = 0;
     program.render_just_normals = 0;
+
+    program.last_number_key = 4;
 
     // Init GLFW, load OpenGL 4.6, and setup nuklear GUI library
     {
