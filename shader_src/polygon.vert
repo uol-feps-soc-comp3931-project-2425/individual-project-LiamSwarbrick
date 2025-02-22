@@ -3,7 +3,6 @@
 layout (location = 0) in vec3 v_position;
 layout (location = 1) in vec3 v_color;
 
-// Set once per draw call
 layout (location = 0) uniform mat4 mvp;
 
 out vec3 color;

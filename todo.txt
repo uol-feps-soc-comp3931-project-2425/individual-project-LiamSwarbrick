@@ -1,5 +1,27 @@
 
-Should specular and diffuse clustering be different?
+
+
+
+        todo:
+- fix spawn not actually facing in forward view direction
+- Find proper fix for: if (al.n > 4) al.n = 5;
+- Take screenshots of strnog specular highlights not showing in clusters before i fix it
+  so i can show them in the report
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 Also need to stress test on massive open plane..
 So a small number of lights per pixel, but a vast world

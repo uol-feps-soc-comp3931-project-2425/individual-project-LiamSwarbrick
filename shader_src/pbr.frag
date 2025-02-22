@@ -451,11 +451,14 @@ main()
             vec3(  1.,  1.,   0.),
             vec3(t1.z, 0.,  t1.w)
         );
-        
+
         // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
-        vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, 4, al.is_double_sided == 1);
-        vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, 4, al.is_double_sided == 1);
-        
+        if (al.n > 4) al.n = 5;   // TODO: FIND PROPER FIX FOR THIS 
+        vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
+        vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, al.n, al.is_double_sided == 1);
+        // vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, 4, al.is_double_sided == 1);
+        // vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace,   4, al.is_double_sided == 1);
+
         // GGX BRDF shadowing and Fresnel
         // t2.x: shadowedF90 (F90 normally it should be 1.0)
         // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
@@ -480,7 +483,7 @@ main()
     // frag_color = mix(vec4(N, alpha), vec4(metallic_roughness.rgb, alpha), 0.5);
 
     float amount_red = float(num_point_lights/20.0);
-    float amount_blue = float(num_area_lights/5.0);
+    float amount_blue = float(num_area_lights/10.0);
     // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     
     frag_color = vec4(amount_red, metallic_roughness.g, amount_blue, alpha);

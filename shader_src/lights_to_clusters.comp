@@ -105,11 +105,16 @@ test_arealight(uint i, Cluster cluster)
 
         vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
         vec3 cluster_half_dimensions = (cluster.max_point.xyz - cluster.min_point.xyz) * 0.5;
-        float margin = dot(cluster_half_dimensions, abs(light_normal));
+        float margin = 2.0 * dot(cluster_half_dimensions, abs(light_normal));
+        // float margin = 0.0;
         
         vec3 polygon_centroid = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
 
         if (dot(cluster_center - polygon_centroid, light_normal) + margin < 0.0)
+        // if (
+        //     dot(cluster.min_point.xyz - polygon_centroid, light_normal) < 0.0 &&
+        //     dot(cluster.max_point.xyz - polygon_centroid, light_normal) < 0.0 &&
+        // )
         {
             return false;
         }
