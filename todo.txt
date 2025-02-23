@@ -8,6 +8,16 @@
 - Take screenshots of strnog specular highlights not showing in clusters before i fix it
   so i can show them in the report
 
+TODO: cone clustering for better specular,
+      READ Optimized Phong and Blinn-Phong Glossy Highlights
+        Linus Källberg and Thomas Larsson
+        Mälardalen University
+TODO Idea:
+        Only compute diffuse component when in diffuse cluster?
+        Only copmute specular component when in specular cluster?
+    This could be alright but probably wouldn't save that much.
+    But if i have time it could be another good thing to implement.
+Anyway the basic idea of using cones for specular clustering is important.
 
 
 

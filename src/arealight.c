@@ -23,12 +23,6 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
     al.color_rgb_intensity_a[2] = rgb[2];
     al.color_rgb_intensity_a[3] = rng_rangef(1.0f, 8.0f);
 
-    // int n = (rand() % 4) + 3;  // Plus 3 since we want triangles and above
-    if (n == 6)  // Special case for star
-    {
-        n = 10;
-    }
-
     al.n = n;
     al.is_double_sided = is_double_sided;
 
@@ -44,7 +38,7 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
     {
         memcpy(al.points_worldspace, pentagon_points, sizeof(pentagon_points));
     }
-    else if (n == 10)
+    else if (n == 6)
     {
         memcpy(al.points_worldspace, star_points, sizeof(star_points));
     }

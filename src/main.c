@@ -2230,7 +2230,7 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
             glm_mat4_mulv(program.cam.view_matrix, view_forward, view_forward);
             vec3 true_forward; glm_vec3_normalize_to(view_forward, true_forward);
 
-            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, program.last_number_key);
+            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, (int)program.last_number_key);
             push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
             printf("light:%d.. %f, %f, %f\n", al.n, al.points_worldspace[0][0], al.points_worldspace[0][1], al.points_worldspace[0][2]);
         }

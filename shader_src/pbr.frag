@@ -453,7 +453,7 @@ main()
         );
 
         // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
-        if (al.n > 4) al.n = 5;   // TODO: FIND PROPER FIX FOR THIS 
+        if (al.n > 4) sum_arealight_radiance += vec3(10.0);
         vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
         vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, al.n, al.is_double_sided == 1);
         // vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, 4, al.is_double_sided == 1);
