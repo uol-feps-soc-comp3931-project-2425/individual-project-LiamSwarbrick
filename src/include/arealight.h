@@ -21,6 +21,7 @@ typedef struct AreaLight
 }
 AreaLight;
 
+// defined in arealight_shape_data.c
 extern const float triangle_points[12];
 extern const float quad_points[16];
 extern const float pentagon_points[20];

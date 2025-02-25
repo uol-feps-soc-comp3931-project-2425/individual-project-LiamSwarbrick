@@ -2,7 +2,7 @@
 // glfw    - Windowing and OpenGL context
 // glad    - OpenGL 4.6 core function loader
 // cglm    - Inline linear algebra
-// cgltf   - GLTF file format loading
+// cgltf   - Parses GLTF file format into C structs
 // stb     - Image file loading
 // nuklear - Immediate mode GUI
 
@@ -276,6 +276,7 @@ load_image(const char* filename, cgltf_image* image)
     }
     else if (image->uri)
     {
+        // Not supporting embedded images in glTF files
         if (strncmp(image->uri, "data:", 5) == 0)
         {
             // In future could add something similar to https://github.com/google/filament/blob/main/libs/gltfio/src/ResourceLoader.cpp#L133
@@ -2714,13 +2715,22 @@ main(int argc, char** argv)
                         program.cam.pitch = 0.0f;
                         program.cam.yaw = PI/2.0f;
                     }
-
+                    
+                    nk_layout_row_dynamic(program.gui_context, 0, 4);
                     if (nk_button_label(program.gui_context, "Delete all point lights"))
                     {
                         free_array(&program.scene.point_lights);
 
                         // Create new empty array
                         program.scene.point_lights = create_array(10 * sizeof(PointLight));
+                    }
+
+                    if (nk_button_label(program.gui_context, "Delete all area lights"))
+                    {
+                        free_array(&program.scene.area_lights);
+
+                        // Create new empty array
+                        program.scene.area_lights = create_array(10 * sizeof(AreaLight));
                     }
 
                     if (program.is_clustered_shading_enabled)

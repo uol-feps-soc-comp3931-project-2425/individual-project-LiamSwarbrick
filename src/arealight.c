@@ -21,7 +21,7 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
     al.color_rgb_intensity_a[0] = rgb[0];
     al.color_rgb_intensity_a[1] = rgb[1];
     al.color_rgb_intensity_a[2] = rgb[2];
-    al.color_rgb_intensity_a[3] = rng_rangef(1.0f, 8.0f);
+    al.color_rgb_intensity_a[3] = rng_rangef(3.0f, 10.0f);
 
     al.n = n;
     al.is_double_sided = is_double_sided;
@@ -48,7 +48,8 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
     }
     
     mat4 scale = GLM_MAT4_IDENTITY_INIT;
-    glm_scale(scale, (vec3){ rng_rangef(2.0f, 5.0f), rng_rangef(2.0f, 5.0f), rng_rangef(2.0f, 5.0f) });
+    if (n != 6)
+        glm_scale(scale, (vec3){ rng_rangef(0.3f, 2.0f), rng_rangef(0.3f, 2.0f), rng_rangef(0.3f, 2.0f) });
 
     mat4 rot = GLM_MAT4_IDENTITY_INIT;
     {

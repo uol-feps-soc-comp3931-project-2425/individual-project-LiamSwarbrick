@@ -430,6 +430,7 @@ main()
 
     // Area Lights
 #ifdef ENABLE_CLUSTERED_SHADING
+    #pragma unroll(CLUSTER_MAX_LIGHTS/2)
     for (int i = 0; i < num_area_lights; ++i)
     {
         uint light_index = clusters[tile_index].area_indices[i];
@@ -453,14 +454,14 @@ main()
         );
 
         // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
-        if (al.n > 4) sum_arealight_radiance += vec3(10.0);
+        // if (al.n > 4) sum_arealight_radiance += vec3(10.0);
         vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
         vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, al.n, al.is_double_sided == 1);
         // vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, 4, al.is_double_sided == 1);
         // vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace,   4, al.is_double_sided == 1);
 
         // GGX BRDF shadowing and Fresnel
-        // t2.x: shadowedF90 (F90 normally it should be 1.0)
+        // t2.x: shadowedF90 (F90 normally should be 1.0)
         // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
         vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
         specular *= F0 * t2.x + (1.0 - F0) * t2.y;
@@ -469,11 +470,15 @@ main()
     }
 
     // Add ambient light
-    vec3 ambient_color = vec3(0.03);//vec3(0.01);
+    vec3 ambient_color = vec3(0.02);//vec3(0.01);
     vec3 ambient = occlusion * ambient_color * base_color.rgb;
 
     // Get final color in linear space
-    vec3 final_linear_color = (sun_radiance + sum_pl_radiance + sum_arealight_radiance + emissive + ambient);
+    vec3 final_linear_color =
+        sun_radiance +
+        sum_pl_radiance +
+        sum_arealight_radiance +
+        emissive + ambient;
     // vec3 final_linear_color = specular*vec3(0.0, 1.0, 0.0) + diffuse*vec3(0.0, 0.0, 1.0);
 
 // NOTE: I still have the define TRANSPARENT_PASS for when I need to add OIT
@@ -483,10 +488,11 @@ main()
     // frag_color = mix(vec4(N, alpha), vec4(metallic_roughness.rgb, alpha), 0.5);
 
     float amount_red = float(num_point_lights/20.0);
-    float amount_blue = float(num_area_lights/10.0);
+    float amount_blue = float(num_area_lights/5.0);
+    float amount_green = metallic_roughness.g * 0.3;
     // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     
-    frag_color = vec4(amount_red, metallic_roughness.g, amount_blue, alpha);
+    frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
 #else
     // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
     frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);
