@@ -19,6 +19,11 @@ TODO Idea:
     But if i have time it could be another good thing to implement.
 Anyway the basic idea of using cones for specular clustering is important.
 
+TODO Idea:
+	Practical clustered shading talk: avalache engine uses a seperate distant lighting system,
+	their game renders to distances of up to 50,000m but their furthest cluster goes to 500m and then they have a seperate system.
+   SO....
+	Far clusters can have a shit load of lights in them so maybe use a point light approximation for the furthest cluster.
 
 
 

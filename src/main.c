@@ -155,7 +155,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
 #define CLUSTER_GRID_SIZE_X 32//16 
 #define CLUSTER_GRID_SIZE_Y 18//9  
-#define CLUSTER_GRID_SIZE_Z 24
+#define CLUSTER_GRID_SIZE_Z 32
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200
 
@@ -1320,7 +1320,7 @@ draw_gltf_scene(Scene* scene)
         // Make sure the writes to the cluster SSBO happen before the next shader
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         // glMemoryBarrier(GL_ALL_BARRIER_BITS);
-
+        // glFinish();
         // Assign lights to clusters with a second compute shader
         glUseProgram(light_assignment_shader);  // lights_to_clusters.comp
 
@@ -1334,6 +1334,7 @@ draw_gltf_scene(Scene* scene)
         glDispatchCompute(dispatched_workgroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         // glMemoryBarrier(GL_ALL_BARRIER_BITS);
+        // glFinish();
     }
     
 

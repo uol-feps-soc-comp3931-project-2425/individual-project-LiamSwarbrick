@@ -35,5 +35,4 @@ of indirections which makes it hard to make a format for.
 
 Section on developing a PBR renderer:
 - E.g. stuff like the disney brdf and loading base color and emissive as sRGB and others in linear space.
-
-
+why you've chosen to develop with opengl 4.6 instead of trying to implement into an engine like unity.

@@ -119,6 +119,7 @@ test_arealight(uint i, Cluster cluster)
             return false;
         }
     }
+    return true;
 
     // More precise sphere test:
     vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
