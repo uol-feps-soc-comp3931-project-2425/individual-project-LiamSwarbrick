@@ -1659,7 +1659,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         num_point_lights = sizeof(lostempire_pointlight_positions) / sizeof(vec3);
         point_light_positions = lostempire_pointlight_positions;
 
-        // Give lost temple low point light attenuation
+        // Give lost empire low point light attenuation
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear = 2.5f;
         out_loaded_scene->attenuation_quadratic = 5.0f;
@@ -1759,7 +1759,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     // Init directional lighting
     if (scene_id >= 0 && scene_id <= 2)
     {
-        // Turn off directional lights for sponza, suntemple and losttemple
+        // Turn off directional lights for sponza, suntemple and lostempire
         out_loaded_scene->sun_color[0] = 1.0f;
         out_loaded_scene->sun_color[1] = 1.0f;
         out_loaded_scene->sun_color[2] = 1.0f;
@@ -2737,7 +2737,7 @@ main(int argc, char** argv)
                         program.cam.yaw = PI;
                     }
 
-                    if (nk_button_label(program.gui_context, "Load Lost Temple"))
+                    if (nk_button_label(program.gui_context, "Load Lost Empire"))
                     {
                         free_scene(program.scene);
                         load_test_scene(2, &program.scene);

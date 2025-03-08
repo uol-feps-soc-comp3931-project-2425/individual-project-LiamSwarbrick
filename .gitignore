@@ -7,3 +7,6 @@ a.exe
 # Upload the basic scene's
 !data/blenderflattest/
 !data/blenderflattest/**
+
+# Not uploading Sponza, Suntemple, or Lostempire
+# because I don't want to destroy my git repo
