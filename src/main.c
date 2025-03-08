@@ -1757,7 +1757,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     printf("Point Light Array len: %d\n", (int)len);
 
     // Init directional lighting
-    if (scene_id >= 0 && scene_id <= 2)
+    if (scene_id >= 0 && scene_id <= 3)
     {
         // Turn off directional lights for sponza, suntemple and lostempire
         out_loaded_scene->sun_color[0] = 1.0f;

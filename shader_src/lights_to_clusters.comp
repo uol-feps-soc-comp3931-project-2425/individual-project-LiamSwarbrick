@@ -86,6 +86,25 @@ aabb_aabb_intersect(vec3 aabb1_min, vec3 aabb1_max,
 }
 
 bool
+is_aabb_fully_behind_plane(vec3 aabb_min, vec3 aabb_max, vec3 plane_normal, float plane_constant)
+{
+    // Plane defined by dot(N,X) + d = 0
+
+    // Get the point in the further direction of the normal
+    vec3 furthest_point = vec3(
+        plane_normal.x >= 0.0 ? aabb_max.x : aabb_min.x,
+        plane_normal.y >= 0.0 ? aabb_max.y : aabb_min.y,
+        plane_normal.z >= 0.0 ? aabb_max.z : aabb_min.z
+    );
+
+    float signed_distance = dot(plane_normal, furthest_point) + plane_constant;
+
+    // If the signed distance to point closest to the positive side of the plane is negative
+    // Then the AABB is behind the plane
+    return signed_distance < 0;
+}
+
+bool
 test_arealight(uint i, Cluster cluster)
 {
     // return true;
@@ -99,23 +118,14 @@ test_arealight(uint i, Cluster cluster)
     // Half space rejection for single sided area lights
     if (area_lights[i].is_double_sided == 0)
     {
+        // Find plane equation for area light
         vec3 a = area_lights[i].points_viewspace[0].xyz;
         vec3 b = area_lights[i].points_viewspace[1].xyz;
         vec3 c = area_lights[i].points_viewspace[2].xyz;
-        vec3 light_normal = cross(b - a, c - a);
+        vec3 plane_normal = cross(b - a, c - a);
+        float plane_constant = -dot(plane_normal, a);  // d = -dot(N,X)
 
-        vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
-        vec3 cluster_half_dimensions = (cluster.max_point.xyz - cluster.min_point.xyz) * 0.5;
-        float margin = 2.0 * dot(cluster_half_dimensions, abs(light_normal));
-        // float margin = 0.0;
-        
-        vec3 polygon_centroid = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
-
-        if (dot(cluster_center - polygon_centroid, light_normal) + margin < 0.0)
-        // if (
-        //     dot(cluster.min_point.xyz - polygon_centroid, light_normal) < 0.0 &&
-        //     dot(cluster.max_point.xyz - polygon_centroid, light_normal) < 0.0 &&
-        // )
+        if (is_aabb_fully_behind_plane(cluster.min_point.xyz, cluster.max_point.xyz, plane_normal, plane_constant))
         {
             return false;
         }

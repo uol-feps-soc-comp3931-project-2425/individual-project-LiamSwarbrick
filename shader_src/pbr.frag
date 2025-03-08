@@ -476,7 +476,7 @@ main()
     }
 
     // Add ambient light
-    vec3 ambient_color = vec3(0.02);//vec3(0.01);
+    vec3 ambient_color = vec3(0.00);//vec3(0.01);
     vec3 ambient = occlusion * ambient_color * base_color.rgb;
 
     // Get final color in linear space
