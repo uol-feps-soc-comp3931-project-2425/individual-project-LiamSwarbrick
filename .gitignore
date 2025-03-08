@@ -1,5 +1,9 @@
 .vs/
 .vscode/
-data/
+data/**
 _ideating/
 a.exe
+
+# Upload the basic scene's
+!data/blenderflattest/
+!data/blenderflattest/**

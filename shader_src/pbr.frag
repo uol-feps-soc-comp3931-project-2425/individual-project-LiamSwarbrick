@@ -381,7 +381,7 @@ main()
 #ifdef ENABLE_CLUSTERED_SHADING
     // Find fragment's cluster by solving cluster equation for index
     /*
-    For refernece we want ID.z from:
+    For reference we want ID.z from:
     float cluster_near_plane = near * pow(clipping_ratio, float(ID.z) / grid_depth);
     float cluster_far_plane = near * pow(clipping_ratio, float(ID.z + 1) / grid_depth);
     */
@@ -390,10 +390,16 @@ main()
     vec2 tile_size = ceil(screen_dimensions / vec2(grid_size.xy));
     uvec3 tile = uvec3(gl_FragCoord.xy / tile_size, tile_z);
     uint tile_index = tile.x + (tile.y * grid_size.x) + (tile.z * grid_size.x * grid_size.y);
-
+// TODO: if tile_z is far cluster then fade out
     uint num_point_lights = clusters[tile_index].point_count;
     uint num_area_lights = clusters[tile_index].area_count;
     
+    // if (tile_z == grid_size.z - 1)
+    // {
+    //     // Special far cluster lighting system?
+    // }
+    // else
+
     // Point lights
     for (int i = 0; i < num_point_lights; ++i)
     {
@@ -487,7 +493,7 @@ main()
     // frag_color = vec4(metallic_roughness.rgb, alpha);
     // frag_color = mix(vec4(N, alpha), vec4(metallic_roughness.rgb, alpha), 0.5);
 
-    float amount_red = float(num_point_lights/400.0);
+    float amount_red = float(num_point_lights/10.0);
     float amount_blue = float(num_area_lights/5.0);
     float amount_green = metallic_roughness.g * 0.3;
     // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);

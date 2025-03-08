@@ -1192,6 +1192,8 @@ load_ltc_matrix_texture(const float* matrix_table)
 void
 render_area_lights(int light_count, AreaLight* arealights)
 {
+    /* Renders the area light's polygon with a simple polygon shader (polygon.vert/frag) */
+
     // Create a temporary VAO/VBO each frame
     GLuint vao, vbo, ebo;
     glGenVertexArrays(1, &vao);
@@ -1263,7 +1265,7 @@ render_area_lights(int light_count, AreaLight* arealights)
     {
         if (arealights[i].n == 10)
         {
-            glDrawElementsBaseVertex(GL_TRIANGLES, sizeof(star_indices) / sizeof(f32), GL_UNSIGNED_INT, 0, offset);
+            glDrawElementsBaseVertex(GL_TRIANGLES, sizeof(star_indices) / sizeof(star_indices[0]), GL_UNSIGNED_INT, 0, offset);
         }
         else
         {
@@ -1275,6 +1277,7 @@ render_area_lights(int light_count, AreaLight* arealights)
 
     // Cleanup
     glDeleteBuffers(1, &vbo);
+    glDeleteBuffers(1, &ebo);
     glDeleteVertexArrays(1, &vao);
 }
 
@@ -1632,7 +1635,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         num_point_lights = sizeof(sponza_pointlight_positions) / sizeof(vec3);
         point_light_positions = sponza_pointlight_positions;
 
-        // Give sponza lots of attenuation to fill the small space with *cullable* lights
+        // Give sponza lots of attenuation to fill the small space with *cullable* point lights
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear    = 50.0f;//= 8.0f;
         out_loaded_scene->attenuation_quadratic = 80.0f;//= 10.0f;
@@ -1644,7 +1647,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         num_point_lights = sizeof(suntemple_pointlight_positions) / sizeof(vec3);
         point_light_positions = suntemple_pointlight_positions;
 
-        // Give Suntemple more attenuation
+        // Give Suntemple more point light attenuation
         out_loaded_scene->attenuation_constant  = 1.0f;
         out_loaded_scene->attenuation_linear    = 30.0f;//14.0f;//= 8.0f;
         out_loaded_scene->attenuation_quadratic = 50.0f;//25.0f;//= 10.0f;
@@ -1656,7 +1659,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         num_point_lights = sizeof(lostempire_pointlight_positions) / sizeof(vec3);
         point_light_positions = lostempire_pointlight_positions;
 
-        // Give lost temple low attenuation
+        // Give lost temple low point light attenuation
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear = 2.5f;
         out_loaded_scene->attenuation_quadratic = 5.0f;
@@ -1698,7 +1701,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         num_point_lights = 0;
         point_light_positions = NULL;
 
-        // Give massive attenuation
+        // Give massive point light attenuation
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear = 0.5f;
         out_loaded_scene->attenuation_quadratic = 0.2f;
@@ -1726,11 +1729,28 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         light->intensity = rng_rangef(3.0f, 8.0f);
     }
 
-    // Give area lights array one initial area light:
-    // {
-    //     AreaLight al = make_random_area_light(program.cam.pos, (vec3){ 1.0f, 0.0f, 0.0f }, 0);
-    //     push_element_copy(&out_loaded_scene->area_lights, sizeof(AreaLight), &al);
-    // }
+    // Spawn some area lights
+    if (scene_id == 3)
+    {
+        AreaLight al;
+        // AreaLight al = make_area_light((vec3){-5.703502,2.144043,6.508228}, (vec3){-0.405019,0.083187,-0.910516}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-5.373283,0.563741,4.334258}, (vec3){-0.148667,-0.121757,0.981363}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-0.444252,2.244918,2.993092}, (vec3){0.037307,0.082143,-0.995922}, 0, 4);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-7.614271,1.705062,2.550410}, (vec3){-0.421719,0.118250,-0.898983}, 0, 5);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-5.621039,2.030724,-1.572368}, (vec3){0.945164,0.029715,-0.325242}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-4.685359,2.030724,-0.751296}, (vec3){-0.426673,0.017277,-0.904241}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-0.901281,1.222550,-2.511543}, (vec3){0.936156,0.014979,-0.351266}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-3.362687,1.697691,-0.802436}, (vec3){-0.646150,0.026912,-0.762736}, 0, 10);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-3.604351,1.429534,-4.809637}, (vec3){-0.044702,0.093817,-0.994585}, 0, 10);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-5.105920,0.963434,-4.427948}, (vec3){-0.916626,-0.015856,-0.399432}, 0, 5);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-4.631392,0.563686,-3.809273}, (vec3){0.774135,-0.053887,-0.630722}, 0, 5);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-3.847045,0.563686,-3.685028}, (vec3){0.805269,-0.000871,-0.592908}, 0, 5);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-5.528228,0.563686,-4.714774}, (vec3){-0.639877,-0.004516,-0.768464}, 0, 5);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){2.444456,2.973819,-5.098126}, (vec3){0.888351,-0.110246,0.445734}, 0, 4);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){2.437656,0.434195,1.099524}, (vec3){-0.686625,-0.628744,-0.365003}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-6.828334,2.708745,-5.153105}, (vec3){-0.997019,0.013983,-0.075884}, 0, 3);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-4.408458,5.684846,-6.819602}, (vec3){-0.987434,-0.090130,0.129809}, 0, 4);push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
+    }
 
     size_t len = array_length(&out_loaded_scene->point_lights, sizeof(PointLight));
 
@@ -2231,10 +2251,19 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
             vec4 view_forward = { 0.0f, 0.0f, -1.0f, 0.0f }; 
             glm_mat4_mulv(program.cam.view_matrix, view_forward, view_forward);
             vec3 true_forward; glm_vec3_normalize_to(view_forward, true_forward);
-
-            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, (int)program.last_number_key);
+            
+            int n = (int)program.last_number_key;
+            if (n == 6)
+                n = 10;  // 6 key is used for star
+            
+            
+            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d);",
+                program.cam.pos[0],program.cam.pos[1],program.cam.pos[2],
+                true_forward[0],true_forward[1],true_forward[2], n);
+            printf("push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);\n");
+            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n);
             push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);
-            printf("light:%d.. %f, %f, %f\n", al.n, al.points_worldspace[0][0], al.points_worldspace[0][1], al.points_worldspace[0][2]);
+            // printf("light:%d.. %f, %f, %f\n", al.n, al.points_worldspace[0][0], al.points_worldspace[0][1], al.points_worldspace[0][2]);
         }
     }
 
@@ -2271,13 +2300,13 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
     if (key == GLFW_KEY_F2 && action == GLFW_PRESS)
     {
         program.render_just_normals = !program.render_just_normals;
-        reload_shaders(1);
+        reload_shaders(0);
     }
 
     if (key == GLFW_KEY_F3 && action == GLFW_PRESS)
     {
         program.is_clustered_shading_enabled = !program.is_clustered_shading_enabled;
-        reload_shaders(1);
+        reload_shaders(0);
     }
 
     if (action == GLFW_PRESS)

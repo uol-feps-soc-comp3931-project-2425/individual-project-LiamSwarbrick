@@ -38,7 +38,7 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
     {
         memcpy(al.points_worldspace, pentagon_points, sizeof(pentagon_points));
     }
-    else if (n == 6)
+    else if (n == 10)
     {
         memcpy(al.points_worldspace, star_points, sizeof(star_points));
     }
