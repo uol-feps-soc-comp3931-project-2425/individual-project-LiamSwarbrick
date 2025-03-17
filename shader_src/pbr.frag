@@ -490,7 +490,7 @@ main()
 
     // Get final color in linear space
     vec3 final_linear_color =
-        sun_radiance +
+        // sun_radiance +
         sum_pl_radiance +
         sum_arealight_radiance +
         emissive + ambient;

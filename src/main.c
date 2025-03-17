@@ -154,7 +154,7 @@ typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
 #define CLUSTER_GRID_SIZE_X 32//16 
-#define CLUSTER_GRID_SIZE_Y 18//9  
+#define CLUSTER_GRID_SIZE_Y 32//9  
 #define CLUSTER_GRID_SIZE_Z 32
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200

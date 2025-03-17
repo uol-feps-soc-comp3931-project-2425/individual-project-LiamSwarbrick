@@ -107,13 +107,6 @@ is_aabb_fully_behind_plane(vec3 aabb_min, vec3 aabb_max, vec3 plane_normal, floa
 bool
 test_arealight(uint i, Cluster cluster)
 {
-    // Early reject if not inside AABB of light emission
-    if (!aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz,
-            cluster.min_point.xyz, cluster.max_point.xyz))
-    {
-        return false;
-    }
-
     // Half space rejection for single sided area lights
     if (area_lights[i].is_double_sided == 0)
     {
@@ -129,16 +122,44 @@ test_arealight(uint i, Cluster cluster)
             return false;
         }
     }
+
+    // Area light diffuse bounding sphere precomputed on CPU each frame
+    vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
+
+// SPECULAR: TODO: CHECK THIS, AND PROPERLY GO THROUGH THE NORMAL CONE AND GLOSSY OPTIMIZATION STUFF
+    // Specular reflection cone test:
+    // - Assumes the worst case normal for that cluster (i.e. the normal that creates a reflection vector towards the camera)
+    // - If normal cone's were implemented this would pick the worst case within the normal cone.
+    // - Then calculate the specular highlight threshold for that worst case normal
+    // - If it is visible then we include that cluster (return true)
+
+    // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    // vec3 light_pos = sphere.xyz;
+    // vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
+    // vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
+
+    // const float specular_tau = 0.0;
+    // if (dot(light_to_cluster_dir, view_dir) >= specular_tau)
+    // {
+    //     return true;
+    // }
+
+// DIFFUSE:
+
+    // Early reject if not inside AABB of light diffuse emission
+    if (!aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz,
+            cluster.min_point.xyz, cluster.max_point.xyz))
+    {
+        return false;
+    }
     
     // More precise sphere test:
-    vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
     if (sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz))
     {
         return true;
     }
 
-    // Specular reflection cone test
-    
+    return false;
 }
 
 void
