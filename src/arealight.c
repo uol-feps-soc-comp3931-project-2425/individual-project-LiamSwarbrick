@@ -145,7 +145,7 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
     float flux = ((r + b + g) / 3.0f) * intensity * area;
 
     // Inverse square law with hemispherical falloff adjustment
-    return sqrtf(flux / (2.0f * M_PI * min_perceivable));
+    return sqrtf(flux / (2.0f * M_PI * min_perceivable)) * (al->is_double_sided ? 1.0f : 2.0f);
 
     /* Math notes:
     For sphere E = flux/(4*pi*r^2) for distance r from a point light

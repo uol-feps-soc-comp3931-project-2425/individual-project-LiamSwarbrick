@@ -107,7 +107,6 @@ is_aabb_fully_behind_plane(vec3 aabb_min, vec3 aabb_max, vec3 plane_normal, floa
 bool
 test_arealight(uint i, Cluster cluster)
 {
-    // return true;
     // Early reject if not inside AABB of light emission
     if (!aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz,
             cluster.min_point.xyz, cluster.max_point.xyz))
@@ -130,10 +129,16 @@ test_arealight(uint i, Cluster cluster)
             return false;
         }
     }
-
+    
     // More precise sphere test:
     vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
-    return sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+    if (sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz))
+    {
+        return true;
+    }
+
+    // Specular reflection cone test
+    
 }
 
 void

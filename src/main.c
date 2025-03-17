@@ -1324,6 +1324,7 @@ draw_gltf_scene(Scene* scene)
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         // glMemoryBarrier(GL_ALL_BARRIER_BITS);
         // glFinish();
+
         // Assign lights to clusters with a second compute shader
         glUseProgram(light_assignment_shader);  // lights_to_clusters.comp
 
@@ -1466,7 +1467,7 @@ draw_gltf_scene(Scene* scene)
                 vec4 sphere_of_influence;
                 {
                     // Find average of points
-                    vec3 centroid;
+                    vec3 centroid = { 0.0f, 0.0f, 0.0f };
                     for (int i = 0; i < area_light->n; ++i)
                     {
                         glm_vec3_add(centroid, points_viewspace[i], centroid);
@@ -1491,7 +1492,7 @@ draw_gltf_scene(Scene* scene)
                     sphere_of_influence[1] = centroid[1];
                     sphere_of_influence[2] = centroid[2];
                     sphere_of_influence[3] = geo_radius + influence_radius;
-
+                    
                     // Also use AABB for early rejection in light-cluster assignment
                     glm_vec4_copy(points_viewspace[0], aabb_min);
                     glm_vec4_copy(points_viewspace[0], aabb_max);
@@ -1757,7 +1758,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     printf("Point Light Array len: %d\n", (int)len);
 
     // Init directional lighting
-    if (scene_id >= 0 && scene_id <= 3)
+    if (scene_id >= 0 && scene_id <= 2)
     {
         // Turn off directional lights for sponza, suntemple and lostempire
         out_loaded_scene->sun_color[0] = 1.0f;
@@ -1775,7 +1776,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->sun_direction[0] = 0.5f;
         out_loaded_scene->sun_direction[1] = 1.0f;
         out_loaded_scene->sun_direction[2] = 0.3f;
-        out_loaded_scene->sun_intensity = 1.0f;
+        out_loaded_scene->sun_intensity = 0.5f;
         out_loaded_scene->sun_color[0] = 1.0f;
         out_loaded_scene->sun_color[1] = 1.0f;
         out_loaded_scene->sun_color[2] = 1.0f;

@@ -374,6 +374,14 @@ main()
     vec3 sun_radiance = pbr_metallic_roughness_brdf(base_color, metallic, roughness, V, L_sun, N, H_sun)
         * NdotL_sun * sun_color * sun_intensity;
     
+/* Adding shit to make figure START:*/
+    // sun_radiance = simple_brdf()
+    // vec3 col = base_color.xyz;
+
+    // frag_color = vec4(pow(col, vec3(INV_GAMMA)), alpha);
+    // return;
+/* END */
+    
     // Lights (TODO: Put area lights in here as well)
     vec3 sum_pl_radiance = vec3(0.);
     vec3 sum_arealight_radiance = vec3(0.0);  // TODO
@@ -471,12 +479,13 @@ main()
         // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
         vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
         specular *= F0 * t2.x + (1.0 - F0) * t2.y;
-
+        // specular = vec3(0.0);
+        // diffuse = vec3(0.0);
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
     }
 
     // Add ambient light
-    vec3 ambient_color = vec3(0.00);//vec3(0.01);
+    vec3 ambient_color = vec3(0.00);
     vec3 ambient = occlusion * ambient_color * base_color.rgb;
 
     // Get final color in linear space
