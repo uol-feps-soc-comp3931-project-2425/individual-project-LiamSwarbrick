@@ -1401,7 +1401,7 @@ draw_gltf_scene(Scene* scene)
 
             if (num_area_lights != scene->area_light_ssbo_max)
             {
-                scene->area_light_ssbo_max = num_area_lights;
+                scene->area_light_ssbo_max = max(1, num_area_lights);
                 size_t new_size = sizeof(AreaLight) * scene->area_light_ssbo_max;
                 glNamedBufferData(scene->area_light_ssbo, new_size, NULL, GL_DYNAMIC_DRAW);
             }
