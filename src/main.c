@@ -27,7 +27,7 @@
 #define NK_GLFW_GL3_IMPLEMENTATION
 #include "Nuklear/nuklear.h"
 #include "Nuklear/demo/common/style.c"
-#include "Nuklear/demo/glfw_opengl3\nuklear_glfw_gl3.h"
+#include "Nuklear/demo/glfw_opengl3/nuklear_glfw_gl3.h"
 #define NUKLEAR_MAX_VERTEX_BUFFER 512 * 1024
 #define NUKLEAR_MAX_ELEMENT_BUFFER 128 * 1024
 
@@ -1388,7 +1388,7 @@ draw_gltf_scene(Scene* scene)
             // if (num_point_lights > scene->point_light_ssbo_max)
             if (num_point_lights != scene->point_light_ssbo_max)  // For verification purposes resize the ssbo every time the amount of lights changes
             {
-                scene->point_light_ssbo_max = num_point_lights;  // Increase buffer by increments of 50 point lights
+                scene->point_light_ssbo_max = max(1, num_point_lights);  // Increase buffer by increments of 50 point lights
                 size_t new_size = sizeof(PointLight) * scene->point_light_ssbo_max;
                 glNamedBufferData(scene->point_light_ssbo, new_size, NULL, GL_DYNAMIC_DRAW);
                 // glNamedBufferData(pl_ssbo, sizeof(u32) + pl_count * sizeof(PointLight);, NULL, GL_DYNAMIC_DRAW);
@@ -2152,7 +2152,8 @@ reload_shaders(b32 only_reload_pbr_shaders)
     }
 
     char cluster_max_lights_string[100] = { 0 };
-    itoa(program.max_lights_per_cluster, cluster_max_lights_string, 10);
+    // itoa(program.max_lights_per_cluster, cluster_max_lights_string, 10);
+    sprintf(cluster_max_lights_string, "%d", program.max_lights_per_cluster);
 
     // Add #define CLUSTER_MAX_LIGHTS itoa(program.max_lights_per_cluster) to header_text
     char header_text[1024] = { 0 };

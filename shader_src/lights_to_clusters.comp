@@ -80,9 +80,11 @@ aabb_aabb_intersect(vec3 aabb1_min, vec3 aabb1_max,
                          vec3 aabb2_min, vec3 aabb2_max) 
 {
     // Bloody epic mate
-    bvec3 overlap = greaterThanEqual(aabb1_max, aabb2_min) &
-                    lessThanEqual(aabb1_min, aabb2_max);
-    return all(overlap);
+    // bvec3 overlap = greaterThanEqual(aabb1_max, aabb2_min) &
+    //                lessThanEqual(aabb1_min, aabb2_max);
+    // return all(overlap);
+
+    return all(greaterThanEqual(aabb1_max, aabb2_min)) && all(lessThanEqual(aabb1_min, aabb2_max));
 }
 
 bool
