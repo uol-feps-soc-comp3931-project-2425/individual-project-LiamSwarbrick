@@ -56,6 +56,15 @@ layout (std430, binding = 1) restrict buffer cluster_ssbo
 layout (location = 1) uniform uint num_point_lights;
 layout (location = 2) uniform uint num_area_lights;
 
+#define M_PI 3.1415926535897932384626433832795
+
+struct NormalCone
+{
+    float half_angle;
+    float cos_threshold;
+    vec3 cluster_normal;
+};
+
 bool
 sphere_aabb_intersection(vec3 center, float radius, vec3 aabb_min, vec3 aabb_max)
 {
@@ -67,12 +76,25 @@ sphere_aabb_intersection(vec3 center, float radius, vec3 aabb_min, vec3 aabb_max
 }
 
 bool
-test_sphere_aabb(uint i, Cluster cluster)
+test_sphere_aabb(uint i, Cluster cluster, NormalCone normal_cone)
 {
-    // vec3 center = vec3(view_matrix * vec4(point_lights[i].position_xyz_range_w.xyz, 1.0));
-    vec3 center = point_lights[i].position_xyz_range_w.xyz;  // <- lights are already in view space
+    // Does light affect this cluster based on position
+    vec3 light_pos = point_lights[i].position_xyz_range_w.xyz;  // <- lights are already in view space
     float radius = point_lights[i].position_xyz_range_w.w;
-    return sphere_aabb_intersection(center, radius, cluster.min_point.xyz, cluster.max_point.xyz);
+    if (!sphere_aabb_intersection(light_pos, radius, cluster.min_point.xyz, cluster.max_point.xyz))
+    {
+        return false;
+    }
+
+    // Does light affect this cluster based on normal (Backface culling of lights)
+    vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    vec3 to_light = normalize(light_pos - cluster_center);
+    if (dot(normal_cone.cluster_normal, to_light) < -normal_cone.cos_threshold)
+    {
+        return false;
+    }
+
+    return true;
 }
 
 bool
@@ -107,7 +129,7 @@ is_aabb_fully_behind_plane(vec3 aabb_min, vec3 aabb_max, vec3 plane_normal, floa
 }
 
 bool
-test_arealight(uint i, Cluster cluster)
+test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 {
     // Half space rejection for single sided area lights
     if (area_lights[i].is_double_sided == 0)
@@ -128,6 +150,14 @@ test_arealight(uint i, Cluster cluster)
     // Area light diffuse bounding sphere precomputed on CPU each frame
     vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
 
+    // OLD backface culling: The sphere approximation would wasn't good enough causing artefacts
+    // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    // vec3 to_light = normalize(sphere.xyz - cluster_center);
+    // if (dot(normal_cone.cluster_normal, to_light) < -normal_cone.cos_threshold)
+    // {
+    //     return false;
+    // }
+
 // SPECULAR: TODO: CHECK THIS, AND PROPERLY GO THROUGH THE NORMAL CONE AND GLOSSY OPTIMIZATION STUFF
     // Specular reflection cone test:
     // - Assumes the worst case normal for that cluster (i.e. the normal that creates a reflection vector towards the camera)
@@ -135,16 +165,24 @@ test_arealight(uint i, Cluster cluster)
     // - Then calculate the specular highlight threshold for that worst case normal
     // - If it is visible then we include that cluster (return true)
 
-    // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
-    // vec3 light_pos = sphere.xyz;
-    // vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
-    // vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
+    vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    vec3 light_pos = sphere.xyz;
+    vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
+    vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
 
     // const float specular_tau = 0.0;
     // if (dot(light_to_cluster_dir, view_dir) >= specular_tau)
     // {
     //     return true;
     // }
+
+    vec3 worst_case_reflection = normalize(reflect(light_to_cluster_dir, normal_cone.cluster_normal));
+    float specular_threshold = cos(normal_cone.half_angle);
+    if (dot(worst_case_reflection, view_dir) >= specular_threshold)
+    {
+        return true;
+    }
+
 
 // DIFFUSE:
 
@@ -170,6 +208,32 @@ main()
     uint index = gl_GlobalInvocationID.x;
     Cluster cluster = clusters[index];
 
+    // index = tile.x + (tile.y * grid_size.x) + (actual_z * grid_size.x * grid_size.y);
+    uint clusters_per_layer = CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y;
+    uint combined_z = index / clusters_per_layer;
+    uint remainder = index % clusters_per_layer;
+    uint tile_y = remainder / CLUSTER_GRID_SIZE_X;
+    uint tile_x = remainder % CLUSTER_GRID_SIZE_X;
+    uint tile_z = combined_z / CLUSTER_NORMALS_COUNT;
+    uint normal_bin = combined_z % CLUSTER_NORMALS_COUNT;
+
+    // TEMP for CLUSTER_NORMALS_COUNT=6, define representative normals manually for 1x1x1 cube faces:
+    // This should be changed to a function that works for 2x2x2 and 3x3x3 cubes etc...
+    const vec3 representative_normals[CLUSTER_NORMALS_COUNT] = vec3[CLUSTER_NORMALS_COUNT](
+        vec3( 1.0,  0.0,  0.0),  // +X
+        vec3(-1.0,  0.0,  0.0),  // -X
+        vec3( 0.0,  1.0,  0.0),  // +Y
+        vec3( 0.0, -1.0,  0.0),  // -Y
+        vec3( 0.0,  0.0,  1.0),  // +Z
+        vec3( 0.0,  0.0, -1.0)   // -Z
+    );
+
+    // Define the cone half-angle. For example, 45 degrees might work for a cube-face bin.
+    NormalCone normal_cone;
+    normal_cone.half_angle = M_PI / 4.0;
+    normal_cone.cos_threshold = cos(normal_cone.half_angle);
+    normal_cone.cluster_normal = representative_normals[normal_bin];
+
     // Reinitialize count to 0 before computing this frames cluster
     cluster.point_count = 0;
     cluster.area_count = 0;
@@ -179,7 +243,7 @@ main()
 
     for (uint i = 0; i < num_point_lights; ++i)
     {
-        if (test_sphere_aabb(i, cluster) && cluster.point_count < max_point_lights)
+        if (test_sphere_aabb(i, cluster, normal_cone) && cluster.point_count < max_point_lights)
         {
             cluster.point_indices[cluster.point_count++] = i;
         }
@@ -187,7 +251,7 @@ main()
 
     for (uint i = 0; i < num_area_lights; ++i)
     {
-        if (test_arealight(i, cluster) && cluster.area_count < max_area_lights)
+        if (test_arealight(i, cluster, normal_cone) && cluster.area_count < max_area_lights)
         {
             cluster.area_indices[cluster.area_count++] = i;
         }

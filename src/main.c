@@ -153,11 +153,12 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-#define CLUSTER_GRID_SIZE_X 32//16 
-#define CLUSTER_GRID_SIZE_Y 32//9  
-#define CLUSTER_GRID_SIZE_Z 32
-#define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z)
-#define CLUSTER_DEFAULT_MAX_LIGHTS 200
+#define CLUSTER_GRID_SIZE_X 32//32//16 
+#define CLUSTER_GRID_SIZE_Y 32//32//9
+#define CLUSTER_GRID_SIZE_Z 16//32
+#define CLUSTER_NORMALS_COUNT 6
+#define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
+#define CLUSTER_DEFAULT_MAX_LIGHTS 50
 
 typedef struct  ClusterMetaData
 {  // Manually padded so size is same as the std430 glsl struct Cluster
@@ -1310,14 +1311,14 @@ draw_gltf_scene(Scene* scene)
         glProgramUniform1f(compute_clusters_shader, 0, camera->near_plane);
         glProgramUniform1f(compute_clusters_shader, 1, camera->far_plane);
         glProgramUniformMatrix4fv(compute_clusters_shader, 2, 1, GL_FALSE, (f32*)inv_proj);
-        glProgramUniform3ui(compute_clusters_shader, 3, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z);
+        glProgramUniform4ui(compute_clusters_shader, 3, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z, CLUSTER_NORMALS_COUNT);
         glProgramUniform2ui(compute_clusters_shader, 4, camera->width, camera->height);
 
         #define EFFICIENT_WORKGROUPS
         #ifdef EFFICIENT_WORKGROUPS
-            glDispatchCompute(1, 1, CLUSTER_GRID_SIZE_Z);
+            glDispatchCompute(1, 1, CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT);
         #else
-            glDispatchCompute(CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z);
+            glDispatchCompute(CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT);
         #endif
 
         // Make sure the writes to the cluster SSBO happen before the next shader
@@ -1351,7 +1352,7 @@ draw_gltf_scene(Scene* scene)
         // Clustered shading uniform params
         glProgramUniform1f(shader_program, PBR_LOC_near, camera->near_plane);
         glProgramUniform1f(shader_program, PBR_LOC_far, camera->far_plane);
-        glProgramUniform3ui(shader_program, PBR_LOC_grid_size, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z);
+        glProgramUniform4ui(shader_program, PBR_LOC_grid_size, CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z, CLUSTER_NORMALS_COUNT);
         glProgramUniform2ui(shader_program, PBR_LOC_screen_dimensions, camera->width, camera->height);
     }
     else
@@ -2155,11 +2156,13 @@ reload_shaders(b32 only_reload_pbr_shaders)
     // itoa(program.max_lights_per_cluster, cluster_max_lights_string, 10);
     sprintf(cluster_max_lights_string, "%d", program.max_lights_per_cluster);
 
-    // Add #define CLUSTER_MAX_LIGHTS itoa(program.max_lights_per_cluster) to header_text
+    // Pass defines to shader
     char header_text[1024] = { 0 };
     snprintf(header_text, sizeof(header_text),
             "%s\n#define CLUSTER_GRID_SIZE_X " xstr(CLUSTER_GRID_SIZE_X)
             "\n#define CLUSTER_GRID_SIZE_Y " xstr(CLUSTER_GRID_SIZE_Y)
+            "\n#define CLUSTER_GRID_SIZE_Z " xstr(CLUSTER_GRID_SIZE_Z)
+            "\n#define CLUSTER_NORMALS_COUNT " xstr(CLUSTER_NORMALS_COUNT)
             "\n#define CLUSTER_MAX_LIGHTS %s\n",
         base_header_text, cluster_max_lights_string);
 

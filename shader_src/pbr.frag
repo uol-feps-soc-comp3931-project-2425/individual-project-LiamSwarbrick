@@ -96,7 +96,7 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     // Clustered shading parameters
     layout (location = 17) uniform float near;
     layout (location = 18) uniform float far;
-    layout (location = 19) uniform uvec3 grid_size;
+    layout (location = 19) uniform uvec4 grid_size;
     layout (location = 20) uniform uvec2 screen_dimensions;
 #else
     layout (location = 9) uniform uint num_point_lights;
@@ -387,21 +387,28 @@ main()
     vec3 sum_arealight_radiance = vec3(0.0);  // TODO
 
 #ifdef ENABLE_CLUSTERED_SHADING
-    // Find fragment's cluster by solving cluster equation for index
-    /*
-    For reference we want ID.z from:
-    float cluster_near_plane = near * pow(clipping_ratio, float(ID.z) / grid_depth);
-    float cluster_far_plane = near * pow(clipping_ratio, float(ID.z + 1) / grid_depth);
-    */
+    // Get position cluster
     uint tile_z = uint((log(abs(frag_position_viewspace.z) / near) * grid_size.z) / log(far / near));
-    // vec2 tile_size = screen_dimensions / grid_size.xy;
     vec2 tile_size = ceil(screen_dimensions / vec2(grid_size.xy));
     uvec3 tile = uvec3(gl_FragCoord.xy / tile_size, tile_z);
-    uint tile_index = tile.x + (tile.y * grid_size.x) + (tile.z * grid_size.x * grid_size.y);
-// TODO: if tile_z is far cluster then fade out
+
+    // Each position contains clusters for different normal directions
+    uint normal_index;// TODO: Want better normal scheme that autoscales with CLUSTER_NORMALS_COUNT
+    vec3 abs_norm = abs(N);
+    if (abs_norm.x >= abs_norm.y && abs_norm.x >= abs_norm.z)
+        normal_index = (N.x > 0.0) ? 0u : 1u;
+    else if (abs_norm.y >= abs_norm.x && abs_norm.y >= abs_norm.z)
+        normal_index = (N.y > 0.0) ? 2u : 3u;
+    else
+        normal_index = (N.z > 0.0) ? 4u : 5u;
+
+    uint combined_z = tile_z * CLUSTER_NORMALS_COUNT + normal_index;
+    uint tile_index = tile.x + (tile.y * grid_size.x) + (combined_z * grid_size.x * grid_size.y);
+
     uint num_point_lights = clusters[tile_index].point_count;
     uint num_area_lights = clusters[tile_index].area_count;
-    
+
+    // TODO:    
     // if (tile_z == grid_size.z - 1)
     // {
     //     // Special far cluster lighting system?
@@ -502,10 +509,22 @@ main()
     // frag_color = vec4(metallic_roughness.rgb, alpha);
     // frag_color = mix(vec4(N, alpha), vec4(metallic_roughness.rgb, alpha), 0.5);
 
-    float amount_red = float(num_point_lights/10.0);
+    // float hue = float(200 + (tile_index % 700)) / 1000.0;
+    // float hue = float(000 + (tile_index % 700)) / 1000.0;
+    // float hue = float(tile_index % 300) / 300.0;
+
+    // float hue = float(200 + (tile_index % 700)) / 1000.0;
+    // float r = abs(hue * 6.0 - 3.0) - 1.0;
+    // float g = 2.0 - abs(hue * 6.0 - 2.0);
+    // float b = 2.0 - abs(hue * 6.0 - 4.0);
+    // vec3 rgb = 0.7 * clamp(vec3(r, g, b), 0.0, 1.0);
+    // frag_color = vec4(pow(rgb, vec3(INV_GAMMA)), alpha);
+    // frag_color = vec4(rgb, alpha);
+
+    float amount_red = float(num_point_lights/15.0);
     float amount_blue = float(num_area_lights/5.0);
-    float amount_green = metallic_roughness.g * 0.3;
-    // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
+    float amount_green = 0.2;// metallic_roughness.g * 0.3;
+    // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     
     frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
 #else

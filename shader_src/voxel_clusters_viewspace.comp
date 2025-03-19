@@ -37,7 +37,7 @@ layout (std430, binding = 1) restrict buffer cluster_ssbo
 layout (location = 0) uniform float near;
 layout (location = 1) uniform float far;
 layout (location = 2) uniform mat4 inv_proj;
-layout (location = 3) uniform uvec3 grid_size;  // = { CLUSTER_GRID_SIZE_X,Y,Z }
+layout (location = 3) uniform uvec4 grid_size;  // = { CLUSTER_GRID_SIZE_X,Y,Z, CLUSTER_NORMALS_COUNT }
 layout (location = 4) uniform uvec2 screen_dimensions;
 
 vec3
@@ -65,9 +65,12 @@ main()
 {
     uvec3 ID = gl_GlobalInvocationID;
 
+    // Number of z compute invocations is (CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
+    uint depth_slice = ID.z / CLUSTER_NORMALS_COUNT;
+    uint normal_bin = ID.z % CLUSTER_NORMALS_COUNT;
+
     // Each work group is a tile, a tile is sliced into many clusters
     uint tile_index = ID.x + (ID.y * grid_size.x) + (ID.z * grid_size.x * grid_size.y);
-    // vec2 tile_size = screen_dimensions / grid_size.xy;  // This underfits and leaves a bar of unlit geometry at the top of the screen
     vec2 tile_size = ceil(screen_dimensions / vec2(grid_size.xy));
 
     vec2 min_tile_screenspace = ID.xy * tile_size;
@@ -78,8 +81,8 @@ main()
 
     float clipping_ratio = far / near;
     float grid_depth = float(grid_size.z);
-    float cluster_near_plane = near * pow(clipping_ratio, float(ID.z) / grid_depth);
-    float cluster_far_plane = near * pow(clipping_ratio, float(ID.z + 1) / grid_depth);
+    float cluster_near_plane = near * pow(clipping_ratio, float(depth_slice) / grid_depth);
+    float cluster_far_plane = near * pow(clipping_ratio, float(depth_slice + 1) / grid_depth);
     
     vec3 min_point_near = linear_intersection_with_z_plane(vec3(0., 0., 0.), min_tile, cluster_near_plane);
     vec3 min_point_far = linear_intersection_with_z_plane(vec3(0., 0., 0.), min_tile, cluster_far_plane);
