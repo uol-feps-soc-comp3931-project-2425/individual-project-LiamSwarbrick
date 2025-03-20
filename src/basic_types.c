@@ -119,6 +119,7 @@ free_array(DynamicArray* arr)
     if (arr->data_buffer)
     {
         free(arr->data_buffer);
+        arr->data_buffer = NULL;
     }
 }
 

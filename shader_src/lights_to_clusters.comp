@@ -86,13 +86,13 @@ test_sphere_aabb(uint i, Cluster cluster, NormalCone normal_cone)
         return false;
     }
 
-    // Does light affect this cluster based on normal (Backface culling of lights)
-    vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
-    vec3 to_light = normalize(light_pos - cluster_center);
-    if (dot(normal_cone.cluster_normal, to_light) < -normal_cone.cos_threshold)
-    {
-        return false;
-    }
+    // // Does light affect this cluster based on normal (Backface culling of lights)
+    // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    // vec3 to_light = normalize(light_pos - cluster_center);
+    // if (dot(normal_cone.cluster_normal, to_light) < -normal_cone.cos_threshold)
+    // {
+    //     return false;
+    // }
 
     return true;
 }
@@ -227,6 +227,7 @@ main()
         vec3( 0.0,  0.0,  1.0),  // +Z
         vec3( 0.0,  0.0, -1.0)   // -Z
     );
+    // TODO: This would be a second cubemap I generate on the CPU
 
     // Define the cone half-angle. For example, 45 degrees might work for a cube-face bin.
     NormalCone normal_cone;

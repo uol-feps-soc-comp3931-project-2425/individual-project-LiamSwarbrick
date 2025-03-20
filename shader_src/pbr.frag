@@ -283,6 +283,10 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     vec3 dir = viewspace_points[0].xyz - P;
     vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
     bool behind = dot(dir, light_normal) < 0.;
+    if (!behind && !double_sided)
+    {
+        return vec3(0.0);
+    }
 
     // Move polygon into tangent space
     for (int i = 0; i < viewspace_points_n; ++i)  // If i only used quad area lights I could unroll this but I'm not
@@ -322,10 +326,6 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     float scale = texture(LTC2_texture, uv).w;
 
     float sum = len * scale;
-    if (!behind && !double_sided)
-    {
-        sum = 0.0;
-    }
 
     // Outgoing radiance from fragment from the polygon
     vec3 Lo_i = vec3(sum);
@@ -401,6 +401,7 @@ main()
         normal_index = (N.y > 0.0) ? 2u : 3u;
     else
         normal_index = (N.z > 0.0) ? 4u : 5u;
+    // normal_index = sample cubemap at N
 
     uint combined_z = tile_z * CLUSTER_NORMALS_COUNT + normal_index;
     uint tile_index = tile.x + (tile.y * grid_size.x) + (combined_z * grid_size.x * grid_size.y);
@@ -492,7 +493,7 @@ main()
     }
 
     // Add ambient light
-    vec3 ambient_color = vec3(0.00);
+    vec3 ambient_color = vec3(0.02);
     vec3 ambient = occlusion * ambient_color * base_color.rgb;
 
     // Get final color in linear space
