@@ -53,30 +53,13 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
 
     mat4 rot = GLM_MAT4_IDENTITY_INIT;
     {
-        vec3 up = { 0.0f, 1.0f, 0.0f }; // World up
-
-        vec3 right;
-        glm_cross(normal_vector, up, right);
-        glm_normalize(right);
-
-        vec3 real_up;
-        glm_cross(right, normal_vector, real_up);
-        glm_normalize(real_up);
-
-        rot[0][0] = right[0];
-        rot[0][1] = right[1];
-        rot[0][2] = right[2];
-        rot[0][3] = 0.0f;
-
-        rot[1][0] = real_up[0];
-        rot[1][1] = real_up[1];
-        rot[1][2] = real_up[2];
-        rot[1][3] = 0.0f;
-
-        rot[2][0] = -normal_vector[0];
-        rot[2][1] = -normal_vector[1];
-        rot[2][2] = -normal_vector[2];
-        rot[2][3] = 0.0f;
+        // Rotating the plane (with normal (0,0,-1) to plane with normal (normal_vector))
+        vec3 old_normal = { 0.0f, 0.0f, -1.0f };
+        vec3 rot_axis;
+        glm_cross(old_normal, normal_vector, rot_axis);
+        float rot_angle = acosf(glm_dot(old_normal, normal_vector));
+        
+        glm_rotate_atm(rot, (vec3){ 0.0f, 0.0f, 0.0f }, rot_angle, rot_axis);
     }
 
     mat4 move;

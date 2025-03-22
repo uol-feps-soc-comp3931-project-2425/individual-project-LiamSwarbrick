@@ -98,6 +98,10 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     layout (location = 18) uniform float far;
     layout (location = 19) uniform uvec4 grid_size;
     layout (location = 20) uniform uvec2 screen_dimensions;
+
+    // Normal clustering textures
+    layout (binding = 7) uniform usamplerCube cluster_normals_cubemap;
+    layout (binding = 8) uniform sampler1D representative_normals_texture;
 #else
     layout (location = 9) uniform uint num_point_lights;
     layout (location = 21) uniform uint num_area_lights;
@@ -393,14 +397,15 @@ main()
     uvec3 tile = uvec3(gl_FragCoord.xy / tile_size, tile_z);
 
     // Each position contains clusters for different normal directions
-    uint normal_index;// TODO: Want better normal scheme that autoscales with CLUSTER_NORMALS_COUNT
-    vec3 abs_norm = abs(N);
-    if (abs_norm.x >= abs_norm.y && abs_norm.x >= abs_norm.z)
-        normal_index = (N.x > 0.0) ? 0u : 1u;
-    else if (abs_norm.y >= abs_norm.x && abs_norm.y >= abs_norm.z)
-        normal_index = (N.y > 0.0) ? 2u : 3u;
-    else
-        normal_index = (N.z > 0.0) ? 4u : 5u;
+    uint normal_index = texture(cluster_normals_cubemap, N).r;
+    // uint normal_index;// TODO: Want better normal scheme that autoscales with CLUSTER_NORMALS_COUNT
+    // vec3 abs_norm = abs(N);
+    // if (abs_norm.x >= abs_norm.y && abs_norm.x >= abs_norm.z)
+    //     normal_index = (N.x > 0.0) ? 0u : 1u;
+    // else if (abs_norm.y >= abs_norm.x && abs_norm.y >= abs_norm.z)
+    //     normal_index = (N.y > 0.0) ? 2u : 3u;
+    // else
+    //     normal_index = (N.z > 0.0) ? 4u : 5u;
     // normal_index = sample cubemap at N
 
     uint combined_z = tile_z * CLUSTER_NORMALS_COUNT + normal_index;

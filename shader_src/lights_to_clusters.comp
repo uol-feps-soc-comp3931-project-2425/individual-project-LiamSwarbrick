@@ -56,6 +56,9 @@ layout (std430, binding = 1) restrict buffer cluster_ssbo
 layout (location = 1) uniform uint num_point_lights;
 layout (location = 2) uniform uint num_area_lights;
 
+layout (binding = 7) uniform usamplerCube cluster_normals_cubemap;
+layout (binding = 8) uniform sampler1D representative_normals_texture;
+
 #define M_PI 3.1415926535897932384626433832795
 
 struct NormalCone
@@ -219,21 +222,21 @@ main()
 
     // TEMP for CLUSTER_NORMALS_COUNT=6, define representative normals manually for 1x1x1 cube faces:
     // This should be changed to a function that works for 2x2x2 and 3x3x3 cubes etc...
-    const vec3 representative_normals[CLUSTER_NORMALS_COUNT] = vec3[CLUSTER_NORMALS_COUNT](
-        vec3( 1.0,  0.0,  0.0),  // +X
-        vec3(-1.0,  0.0,  0.0),  // -X
-        vec3( 0.0,  1.0,  0.0),  // +Y
-        vec3( 0.0, -1.0,  0.0),  // -Y
-        vec3( 0.0,  0.0,  1.0),  // +Z
-        vec3( 0.0,  0.0, -1.0)   // -Z
-    );
+    // const vec3 representative_normals[CLUSTER_NORMALS_COUNT] = vec3[CLUSTER_NORMALS_COUNT](
+    //     vec3( 1.0,  0.0,  0.0),  // +X
+    //     vec3(-1.0,  0.0,  0.0),  // -X
+    //     vec3( 0.0,  1.0,  0.0),  // +Y
+    //     vec3( 0.0, -1.0,  0.0),  // -Y
+    //     vec3( 0.0,  0.0,  1.0),  // +Z
+    //     vec3( 0.0,  0.0, -1.0)   // -Z
+    // );
     // TODO: This would be a second cubemap I generate on the CPU
 
-    // Define the cone half-angle. For example, 45 degrees might work for a cube-face bin.
+    // TODO: Double check if half angle is correct
     NormalCone normal_cone;
-    normal_cone.half_angle = M_PI / 4.0;
+    normal_cone.half_angle = M_PI / (4.0 * sqrt(CLUSTER_NORMALS_COUNT/6));
     normal_cone.cos_threshold = cos(normal_cone.half_angle);
-    normal_cone.cluster_normal = representative_normals[normal_bin];
+    normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];
 
     // Reinitialize count to 0 before computing this frames cluster
     cluster.point_count = 0;

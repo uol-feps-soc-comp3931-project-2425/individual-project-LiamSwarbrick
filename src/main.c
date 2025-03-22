@@ -113,6 +113,8 @@ enum PBR_Shader_Texture_Units
 
 #define TEXUNIT_LTC1_texture 5
 #define TEXUNIT_LTC2_texture 6
+#define TEXUNIT_cluster_normals_cubemap 7
+#define TEXUNIT_representative_normals_texture 8
 
 u32
 gl_component_type_from_cgltf(cgltf_component_type component_type)
@@ -156,7 +158,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 #define CLUSTER_GRID_SIZE_X 32//32//16 
 #define CLUSTER_GRID_SIZE_Y 32//32//9
 #define CLUSTER_GRID_SIZE_Z 16//32
-#define CLUSTER_NORMALS_COUNT 6
+#define CLUSTER_NORMALS_COUNT 54//24//6   // of the form 6*n*n, e.g. 6, 24, 54
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 100
 
@@ -804,6 +806,8 @@ typedef struct Program
 
     // Cluster grid SSBO
     u32 cluster_grid_ssbo;
+    u32 cluster_normals_cubemap;  // get the quantized normal using a cubemap lookup.
+    u32 representative_normals_1dtexure;  // the inverse of the cubemap (go from normal index to vector)
 
     // Dynamically add/change point lights in scene here
     DynamicArray point_lights;
@@ -829,7 +833,117 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
 
     // TODO: Generate cube maps for cluster indexing based on quantized normals
+    // CLUSTER_NORMALS_COUNT = 6*n*n
+    int n = (int)sqrt(CLUSTER_NORMALS_COUNT / 6);  // e.g. n=3 gives a 3x3 cubemap which is 6 3x3 textures
+    float n_f32 = (float)n;
 
+    u32 cubemap_face_size = n*n * 3*sizeof(float);  // nxn texture of vec3s
+    u32 index_cubemap_face_size = n*n * sizeof(u32);
+    float* cubemap_texture_data = malloc(6 * cubemap_face_size);
+        float* cubemap_posx = (float*)((u8*)cubemap_texture_data + 0*cubemap_face_size);
+        float* cubemap_negx = (float*)((u8*)cubemap_texture_data + 1*cubemap_face_size);
+        float* cubemap_posy = (float*)((u8*)cubemap_texture_data + 2*cubemap_face_size);
+        float* cubemap_negy = (float*)((u8*)cubemap_texture_data + 3*cubemap_face_size); 
+        float* cubemap_posz = (float*)((u8*)cubemap_texture_data + 4*cubemap_face_size);
+        float* cubemap_negz = (float*)((u8*)cubemap_texture_data + 5*cubemap_face_size);
+    u32* index_cubemap_data = malloc(6 * index_cubemap_face_size);
+        u32* index_cubemap_posx = (u32*)((u8*)index_cubemap_data + 0*index_cubemap_face_size);
+        u32* index_cubemap_negx = (u32*)((u8*)index_cubemap_data + 1*index_cubemap_face_size);
+        u32* index_cubemap_posy = (u32*)((u8*)index_cubemap_data + 2*index_cubemap_face_size);
+        u32* index_cubemap_negy = (u32*)((u8*)index_cubemap_data + 3*index_cubemap_face_size); 
+        u32* index_cubemap_posz = (u32*)((u8*)index_cubemap_data + 4*index_cubemap_face_size);
+        u32* index_cubemap_negz = (u32*)((u8*)index_cubemap_data + 5*index_cubemap_face_size);
+
+    for (int v = 0; v < n; ++v)
+    {
+        for (int u = 0; u < n; ++u)
+        {
+            // Consider uv's spanning width/height of n units, (0,0) at bottom left,
+            float u_val = (float)u + 0.5f;
+            float v_val = (float)v + 0.5f;
+            
+            // and then move (0,0) to centre by adding (n/2, n/2)
+            u_val -= 0.5f * n_f32;
+            v_val -= 0.5f * n_f32;
+
+            // and then divide to get vectors on the unit cube
+            float inv_n = 1.0f / n_f32;
+            u_val *= inv_n;
+            v_val *= inv_n;
+            
+            // For u,v mappings see diagram here https://www.khronos.org/opengl/wiki/File:CubeMapAxes.png
+            u32 vector_index = 3 * (n*v + u);
+            f32 invsqrt = sqrtf(1.0f + u_val*u_val + v_val*v_val);  // Normalize to move from unit cube to unit sphere
+            
+            cubemap_posx[vector_index + 0] =  1.0f  * invsqrt;
+            cubemap_posx[vector_index + 1] = -v_val * invsqrt;
+            cubemap_posx[vector_index + 2] = -u_val * invsqrt;
+            cubemap_negx[vector_index + 0] = -1.0f  * invsqrt;
+            cubemap_negx[vector_index + 1] = -v_val * invsqrt;
+            cubemap_negx[vector_index + 2] =  u_val * invsqrt;
+            cubemap_posy[vector_index + 0] =  u_val * invsqrt;
+            cubemap_posy[vector_index + 1] =  1.0f  * invsqrt;
+            cubemap_posy[vector_index + 2] =  v_val * invsqrt;
+            cubemap_negy[vector_index + 0] =  u_val * invsqrt;
+            cubemap_negy[vector_index + 1] = -1.0f  * invsqrt;
+            cubemap_negy[vector_index + 2] = -v_val * invsqrt;
+            cubemap_posz[vector_index + 0] =  u_val * invsqrt;
+            cubemap_posz[vector_index + 1] = -v_val * invsqrt;
+            cubemap_posz[vector_index + 2] =  1.0f  * invsqrt;
+            cubemap_negz[vector_index + 0] = -u_val * invsqrt;
+            cubemap_negz[vector_index + 1] = -v_val * invsqrt;
+            cubemap_negz[vector_index + 2] = -1.0f  * invsqrt;
+
+            // Index = faceid*n*n + v*n + u
+            index_cubemap_posx[n*v + u] = 0*n*n + v*n + u;
+            index_cubemap_negx[n*v + u] = 1*n*n + v*n + u;
+            index_cubemap_posy[n*v + u] = 2*n*n + v*n + u;
+            index_cubemap_negy[n*v + u] = 3*n*n + v*n + u;
+            index_cubemap_posz[n*v + u] = 4*n*n + v*n + u;
+            index_cubemap_negz[n*v + u] = 5*n*n + v*n + u;
+
+
+            // printf("%f %f %f,\n ", cubemap_posx[vector_index + 0], cubemap_posx[vector_index + 1], cubemap_posx[vector_index + 2]);
+            // printf("%f %f %f,\n ", cubemap_negx[vector_index + 0], cubemap_negx[vector_index + 1], cubemap_negx[vector_index + 2]);
+            // printf("%f %f %f,\n ", cubemap_posy[vector_index + 0], cubemap_posy[vector_index + 1], cubemap_posy[vector_index + 2]);
+            // printf("%f %f %f,\n ", cubemap_negy[vector_index + 0], cubemap_negy[vector_index + 1], cubemap_negy[vector_index + 2]);
+            // printf("%f %f %f,\n ", cubemap_posz[vector_index + 0], cubemap_posz[vector_index + 1], cubemap_posz[vector_index + 2]);
+            // printf("%f %f %f,\n ", cubemap_negz[vector_index + 0], cubemap_negz[vector_index + 1], cubemap_negz[vector_index + 2]);
+        }
+    }
+
+    for (int i = 0; i < 6*n*n; ++i)
+    {
+        vec3 v; glm_vec3_copy(&cubemap_texture_data[3*i], v);
+        printf("%d : %d : %f, %f, %f\n", i, index_cubemap_data[i], v[0], v[1], v[2]);
+    }
+    
+    // Cubemap for quantizing normals
+    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &program.cluster_normals_cubemap);
+    glTextureStorage2D(program.cluster_normals_cubemap, 1, GL_R32UI, n, n);
+    for (u32 i = 0; i < 6; ++i)
+    {
+        glTextureSubImage3D(program.cluster_normals_cubemap, 0, 0, 0, i, n, n, 1, GL_RED_INTEGER, GL_UNSIGNED_INT,
+            (u8*)index_cubemap_data + i*index_cubemap_face_size
+        );
+    }
+    glTextureParameteri(program.cluster_normals_cubemap, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(program.cluster_normals_cubemap, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(program.cluster_normals_cubemap, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(program.cluster_normals_cubemap, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(program.cluster_normals_cubemap, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    // Normal index to quantized normal (1D texture equivalent of cubemap)
+    glCreateTextures(GL_TEXTURE_1D, 1, &program.representative_normals_1dtexure);
+    glTextureStorage1D(program.representative_normals_1dtexure, 1, GL_RGB32F, 6*n*n);
+    glTextureSubImage1D(program.representative_normals_1dtexure, 0, 0, 6*n*n, GL_RGB, GL_FLOAT, cubemap_texture_data);
+
+    glTextureParameteri(program.representative_normals_1dtexure, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTextureParameteri(program.representative_normals_1dtexure, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    glTextureParameteri(program.representative_normals_1dtexure, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+
+    free(cubemap_texture_data);
+    free(index_cubemap_data);
 }
 
 void
@@ -901,6 +1015,13 @@ execute_pbr_draw_call(u32 shader_program, PBRDrawCall* draw_call)
     // Bind LTC textures
     glBindTextureUnit(TEXUNIT_LTC1_texture, program.LTC1_texture);
     glBindTextureUnit(TEXUNIT_LTC2_texture, program.LTC2_texture);
+
+    // Bind clustered shading normal cubemap and texture
+    if (program.is_clustered_shading_enabled)
+    {
+        glBindTextureUnit(TEXUNIT_cluster_normals_cubemap, program.cluster_normals_cubemap);
+        glBindTextureUnit(TEXUNIT_representative_normals_texture, program.representative_normals_1dtexure);
+    }
 
     glBindVertexArray(draw_call->vao);
     
@@ -1763,6 +1884,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         al = make_area_light((vec3){2.437656,0.434195,1.099524}, (vec3){-0.686625,-0.628744,-0.365003}, 0, 3);push_element_copy(  &program.area_lights, sizeof(AreaLight), &al);
         al = make_area_light((vec3){-6.828334,2.708745,-5.153105}, (vec3){-0.997019,0.013983,-0.075884}, 0, 3);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
         al = make_area_light((vec3){-4.408458,5.684846,-6.819602}, (vec3){-0.987434,-0.090130,0.129809}, 0, 4);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 0.0f, 1.0f, 0.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 1.0f, 0.0f, 0.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 0.0f, 0.0f, 1.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
     }
 
     size_t len = array_length(&program.point_lights, sizeof(PointLight));
@@ -2254,24 +2378,25 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
         }
         else
         {
-            // Spawn area light at position
-            // Get full camera orientation from view matrix
-            vec4 view_forward = { 0.0f, 0.0f, -1.0f, 0.0f }; 
-            glm_mat4_mulv(program.cam.view_matrix, view_forward, view_forward);
-            vec3 true_forward; glm_vec3_normalize_to(view_forward, true_forward);
-            
+            // Spawn area light at position        
             int n = (int)program.last_number_key;
             if (n == 6)
                 n = 10;  // 6 key is used for star
             
+            vec3 true_forward = {
+                program.cam.view_matrix[0][2],
+                program.cam.view_matrix[1][2],
+                program.cam.view_matrix[2][2],
+            };
             
+            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n);
+            push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            
+            // Output code snippet to regenerate the lights
             printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d);",
                 program.cam.pos[0],program.cam.pos[1],program.cam.pos[2],
                 true_forward[0],true_forward[1],true_forward[2], n);
             printf("push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);\n");
-            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n);
-            push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-            // printf("light:%d.. %f, %f, %f\n", al.n, al.points_worldspace[0][0], al.points_worldspace[0][1], al.points_worldspace[0][2]);
         }
     }
 
