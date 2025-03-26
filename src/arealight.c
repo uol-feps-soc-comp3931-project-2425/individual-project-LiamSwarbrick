@@ -102,20 +102,55 @@ polygon_area_aabb_upper_bound(AreaLight* al)
 
     if (al->n < 3) return 0.0f;
 
-    // Compute AABB of polygon
-    vec3 min; glm_vec3_copy(al->points_worldspace[0], min);
-    vec3 max; glm_vec3_copy(al->points_worldspace[0], max);
-    for (int i = 1; i < al->n; ++i)
-    {
-        glm_vec3_minv(min, al->points_worldspace[i], min);
-        glm_vec3_maxv(max, al->points_worldspace[i], max);
+    // Find normal from first 3 points
+    vec3 u, v, normal;
+    glm_vec3_sub(al->points_worldspace[1], al->points_worldspace[0], u);
+    glm_vec3_sub(al->points_worldspace[2], al->points_worldspace[0], v);
+    glm_vec3_cross(u, v, normal);
+    glm_vec3_normalize(normal);
+
+    // Construct an orthonormal basis
+    vec3 tangent, bitangent;
+    if (fabsf(normal[0]) > fabsf(normal[1])) {
+        glm_vec3_cross((vec3){0,1,0}, normal, tangent);  // Try y-up first
+    } else {
+        glm_vec3_cross((vec3){1,0,0}, normal, tangent);  // Otherwise, x-right
+    }
+    glm_vec3_normalize(tangent);
+    glm_vec3_cross(normal, tangent, bitangent);
+
+    // Project the polygon onto the new 2D basis
+    vec2 projected[MAX_UNCLIPPED_NGON];
+    for (int i = 0; i < al->n; ++i) {
+        vec3 p;
+        glm_vec3_sub(al->points_worldspace[i], al->points_worldspace[0], p);
+        projected[i][0] = glm_vec3_dot(p, tangent);
+        projected[i][1] = glm_vec3_dot(p, bitangent);
     }
 
-    // Compute surface area of AABB which is an upper bound for the polygons area
-    vec3 size;
-    glm_vec3_sub(max, min, size);
+    // Compute the area using the Shoelace theorem
+    float area = 0.0f;
+    for (int i = 0; i < al->n; ++i) {
+        int j = (i + 1) % al->n;
+        area += projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1];
+    }
 
-    return 2.0f * (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
+    return fabsf(area) * 0.5f;
+
+    // // Compute AABB of polygon
+    // vec3 min; glm_vec3_copy(al->points_worldspace[0], min);
+    // vec3 max; glm_vec3_copy(al->points_worldspace[0], max);
+    // for (int i = 1; i < al->n; ++i)
+    // {
+    //     glm_vec3_minv(min, al->points_worldspace[i], min);
+    //     glm_vec3_maxv(max, al->points_worldspace[i], max);
+    // }
+
+    // // Compute surface area of AABB which is an upper bound for the polygons area
+    // vec3 size;
+    // glm_vec3_sub(max, min, size);
+
+    // return 2.0f * (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
 }
 
 float

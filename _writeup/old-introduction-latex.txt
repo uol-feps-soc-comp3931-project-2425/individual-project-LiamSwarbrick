@@ -1,0 +1,96 @@
+
+% Sections and sub-sections can be declared using \section and \subsection.
+% There is also a \subsubsection, but consider carefully if you really need
+% so many layers of section structure.
+\section{Old Introduction stuff}
+
+% <A brief introduction suitable for a non-specialist, {\em i.e.} without using technical terms or jargon, as far as possible. This may be similar/the same as that in the 'Outline and Plan' document. The remainder of this chapter will normally cover everything to be assessed under the `Background Research` criterion in the mark scheme.>
+
+% Here is an example of how to cite a reference using the numeric system \cite{parikh1980adaptive}.
+
+% ==================================
+
+% background section:
+% go point by point
+% right now, be more specific to the project instead of going on about forward vs deferred to much (do that later)
+
+% - area lights background
+% - clustered shading background
+
+% - mention work needed to get area lights working with clustered shading
+%  o e.g. its different in that area lights specular light must be handled seperately, since the lights occupy physical space,
+%  o specular cluster assignment: narrow aperture but long range. vs diffuse: hemisphere aperture but shorter range.
+
+
+{MOCKUP, JUST GETTING CONTENT ON THE SCREEN, WILL HAVE TO REWRITE AND USE CRITICAL SOURCING}
+
+What do I want to convey to the uninitiated level 3 computer science student about the background leading to investigating
+integrating ltc area lights into a clustered forward renderer?
+Well... they need to know 
+- area lights are important tools in physically based rendering (PBR).
+- 
+
+Provide a good contextual introduction, prolly the recent example of the Area lights in Cyberpunk paper is a good choice to show their emergence in use in games, and thus their importance to run on consumer hardware.
+
+%==========================================
+====================
+Area lights are important tools in Physically Based Rendering (PBR) as they emulate real-world light sources which radiate electromagnetic radiation in the visible spectrum over the finite surface area of an object; this is an evolution of more simple punctual lights (point lights, spotlights, and directional lights) which emit from an infinitesimal point. Area lights more naturally diffuse light, have real specular reflections, and cast soft shadows.
+
+Real-time rendering applications such as video games have traditionally used area lights very sparingly or used very approximate methods like 
+
+have traditionally used area lights very sparingly being $\sim 10n$ times slower to render a surface lit by an n-gon area light than a point light.
+% {reference an appendix maybe? its based on my implementation of Heitz's (2016) Linearly Transformed Cosines area lights}
+
+% Suppose we want those area lights to be dynamic, meaning that the can move and change every frame, which we would need, for instance, to model the lights on a moving car. This requirement means our light culling must be computable at the start of every frame.
+
+The literature review will discuss our options for rendering polygonal area lights, and for light culling algorithms. But the literature on light culling specifically clustered shading does not cover specifics on area lights, thus we have extended it by providing a testing function that can map area lights to clusters, which must be done as tightly as possible to minimize lighting computations.
+
+
+{NOTE: Might change the PBR thing, whilst the area lights i've implemented are for PBR BRDFs, area lights are import assets in nonphotorealistic rendering (NPR) as well, and NPR systems still benefit from the idea of LTC-area lights in that features like anisotropy can still be important to the lighting model but with differently fit parameters and so different LTC-texture }
+
+{NOTE: Can explain later what diffuse/specular reflection is, doesn't need to be overexplained in the introduction}
+
+{NOTE: I have been very general so far, avoiding jargon, I can go into much further detail in the background section on things like what computations happen in the fragment shader and the mathematical background for area lights, and clustered shading}.
+
+%===================================
+% favour of punctual lights (point lights, directional lights, and spot light) [maybe i need a citation] 
+% ,  which are point lights, directional lights, and spotlights, which emit from an infinitesimally small point in well-defined directions. Using 
+
+% Punctual lights are yet to secede their usefulness despite area-lights  
+
+% Modern lighting computations in both real-time and offline rendering are done per pixel, more specifically, the GPU determines which pixels  per fragment (a pixel of a rasterized triangle), in a program called the fragment shader, which runs in parallel on 
+
+% The problem: Computing the irradiance a polygonal light shines onto a fragment using Linearly Transformed Cosines is around 10*n times slower than one point light (i.e. 40 times for a quad light).
+% Luckily each light only affects parts of a scene, so we can use a light culling algorithm to reduce the total amount of lighting computations in a scene by determining in a pre-pass which fragments are affected by which lights. 
+
+% We can discuss our options for light culling but ultimately clustered shading is most appropriate
+% - baking light culling data - doesn't work for dynamic light and is cumbersome
+% - tiled shading - but assigning without considering depth causes lots of overcomputation especially in configuration like looking through prison bars
+% - clustered shading - 3d clusters.
+
+% The clustered shading paper assigns point lights, area lights have less simple shapes and we need this to be as tight as possible due to how expensive they are, area lights also occupy physical space which means we must consider their specular component, and the specular component has a much longer range than the diffuse part, which would mean we assign the lights at huge distances beyond what we would like, luckily we can use a cone shape to assign the specular component tightly, this comes from a paper on optimizing phong highlights].
+
+
+
+
+% background now:
+% the problem
+% area lights
+% clustered shading
+% any literature that can help my implementation
+
+% background todo:
+% - Physically-based rendering.
+% - Forward and deferred shading.
+
+% With the massive improvements in real time rendering used in video games, one of the most underdeveloped tools that 
+
+% Point-lights do not exist in the real world, accurately modelling their shadows 
+
+% The real-time computer graphics used in video games have  from integrating 
+
+% physically-based solutions to rendering problems 
+
+% For instance the Sun is ubiquitously used as an example of a directional light, since it's far enough away that it's rays are virtually parallel. This leaves out 
+
+% Realism doesn't mean it looks good. But area lights always look better than non-PBR lights in non-photorealistic rendering as well. The PBR implementation is useful to non-photorealistic rendering too since it still demonstrates how to capture features such as anisotropy into an area light model.

@@ -158,7 +158,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 #define CLUSTER_GRID_SIZE_X 32//32//16 
 #define CLUSTER_GRID_SIZE_Y 32//32//9
 #define CLUSTER_GRID_SIZE_Z 16//32
-#define CLUSTER_NORMALS_COUNT 54//24//6   // of the form 6*n*n, e.g. 6, 24, 54
+#define CLUSTER_NORMALS_COUNT 24//6//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 100
 
@@ -833,8 +833,14 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
 
     // TODO: Generate cube maps for cluster indexing based on quantized normals
+#if CLUSTER_NORMALS_COUNT == 1
+    printf("Cluster normals disabled: Generating dummy cubemap anyway.\n");
+    int n = 1;  // This generates the 1x1x1 cube normal map, even though it isn't used
+#else
     // CLUSTER_NORMALS_COUNT = 6*n*n
+    assert(CLUSTER_NORMALS_COUNT % 6 == 0 && CLUSTER_NORMALS_COUNT > 0);
     int n = (int)sqrt(CLUSTER_NORMALS_COUNT / 6);  // e.g. n=3 gives a 3x3 cubemap which is 6 3x3 textures
+#endif
     float n_f32 = (float)n;
 
     u32 cubemap_face_size = n*n * 3*sizeof(float);  // nxn texture of vec3s
@@ -912,6 +918,7 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
         }
     }
 
+    printf("Cubemap Normal Data:\n");
     for (int i = 0; i < 6*n*n; ++i)
     {
         vec3 v; glm_vec3_copy(&cubemap_texture_data[3*i], v);
@@ -2250,7 +2257,7 @@ opengl_callback(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei 
 void
 reload_shaders(b32 only_reload_pbr_shaders)
 {
-    printf("Compiling with cluster_max_lights=%d...", program.max_lights_per_cluster);
+    printf("Compiling with cluster_max_lights=%d...\n", program.max_lights_per_cluster);
 
     init_empty_cluster_grid();
 

@@ -89,6 +89,7 @@ test_sphere_aabb(uint i, Cluster cluster, NormalCone normal_cone)
         return false;
     }
 
+#if CLUSTER_NORMALS_COUNT != 1
     // // Does light affect this cluster based on normal (Backface culling of lights)
     // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
     // vec3 to_light = normalize(light_pos - cluster_center);
@@ -96,6 +97,7 @@ test_sphere_aabb(uint i, Cluster cluster, NormalCone normal_cone)
     // {
     //     return false;
     // }
+#endif
 
     return true;
 }
@@ -161,30 +163,40 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     //     return false;
     // }
 
-// SPECULAR: TODO: CHECK THIS, AND PROPERLY GO THROUGH THE NORMAL CONE AND GLOSSY OPTIMIZATION STUFF
-    // Specular reflection cone test:
-    // - Assumes the worst case normal for that cluster (i.e. the normal that creates a reflection vector towards the camera)
-    // - If normal cone's were implemented this would pick the worst case within the normal cone.
-    // - Then calculate the specular highlight threshold for that worst case normal
-    // - If it is visible then we include that cluster (return true)
-
+// SPECULAR:
     vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
-    vec3 light_pos = sphere.xyz;
-    vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
-    vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
 
-    // const float specular_tau = 0.0;
-    // if (dot(light_to_cluster_dir, view_dir) >= specular_tau)
+#if CLUSTER_NORMALS_COUNT == 1  // Normal based clustering disabled
+// For now I'm disabling specular with normals disabled, so I can show why specular clustering is necessary
+
+    // // This code only sorta works anyway
+    // vec3 light_pos = sphere.xyz;
+    // vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
+    // vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
+
+    // const float specular_threshold = 0.5;  // 0.0 for completely shiny materials in scene
+    // if (dot(light_to_cluster_dir, view_dir) >= specular_threshold)
     // {
     //     return true;
     // }
-
-    vec3 worst_case_reflection = normalize(reflect(light_to_cluster_dir, normal_cone.cluster_normal));
-    float specular_threshold = cos(normal_cone.half_angle);
-    if (dot(worst_case_reflection, view_dir) >= specular_threshold)
+#else
+    // Using a specular tau of a very shiny material
+    // float specular_tau = 0.5;  // For scene with mostly rough materials
+    float specular_tau = 1e-6;  // For scene with very shiny materials
+    float max_dot = 0.0;
+    for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
+    {
+        vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
+        vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
+        vec3 view_dir = normalize(-cluster_center);
+        vec3 H = normalize(view_dir + light_to_cluster_dir);
+        max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
+    }
+    if (max_dot >= specular_tau)
     {
         return true;
     }
+#endif
 
 
 // DIFFUSE:
@@ -220,7 +232,7 @@ main()
     uint tile_z = combined_z / CLUSTER_NORMALS_COUNT;
     uint normal_bin = combined_z % CLUSTER_NORMALS_COUNT;
 
-    // TEMP for CLUSTER_NORMALS_COUNT=6, define representative normals manually for 1x1x1 cube faces:
+    // OLD TEMP for CLUSTER_NORMALS_COUNT=6, define representative normals manually for 1x1x1 cube faces:
     // This should be changed to a function that works for 2x2x2 and 3x3x3 cubes etc...
     // const vec3 representative_normals[CLUSTER_NORMALS_COUNT] = vec3[CLUSTER_NORMALS_COUNT](
     //     vec3( 1.0,  0.0,  0.0),  // +X
@@ -230,11 +242,12 @@ main()
     //     vec3( 0.0,  0.0,  1.0),  // +Z
     //     vec3( 0.0,  0.0, -1.0)   // -Z
     // );
-    // TODO: This would be a second cubemap I generate on the CPU
+    // This would be a second cubemap I generate on the CPU 
+    // UPDATE: THIS IS FINISHED NOW REMOVE THE ABOVE
 
     // TODO: Double check if half angle is correct
     NormalCone normal_cone;
-    normal_cone.half_angle = M_PI / (4.0 * sqrt(CLUSTER_NORMALS_COUNT/6));
+    normal_cone.half_angle = M_PI / (4.0 * sqrt(CLUSTER_NORMALS_COUNT/6));   // CLUSTER_NORMALS_COUNT= 6n^2 => n = sqrt(count/6)
     normal_cone.cos_threshold = cos(normal_cone.half_angle);
     normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];
 

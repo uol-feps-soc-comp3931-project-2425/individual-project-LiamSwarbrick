@@ -397,7 +397,11 @@ main()
     uvec3 tile = uvec3(gl_FragCoord.xy / tile_size, tile_z);
 
     // Each position contains clusters for different normal directions
+#if CLUSTER_NORMALS_COUNT == 1
+    uint normal_index = 0;
+#else
     uint normal_index = texture(cluster_normals_cubemap, N).r;
+#endif
     // uint normal_index;// TODO: Want better normal scheme that autoscales with CLUSTER_NORMALS_COUNT
     // vec3 abs_norm = abs(N);
     // if (abs_norm.x >= abs_norm.y && abs_norm.x >= abs_norm.z)
@@ -492,13 +496,13 @@ main()
         // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
         vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
         specular *= F0 * t2.x + (1.0 - F0) * t2.y;
-        // specular = vec3(0.0);
-        // diffuse = vec3(0.0);
+        // specular = vec3(0.00);
+        // diffuse = vec3(0.00);
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
     }
 
     // Add ambient light
-    vec3 ambient_color = vec3(0.02);
+    vec3 ambient_color = vec3(0.00);
     vec3 ambient = occlusion * ambient_color * base_color.rgb;
 
     // Get final color in linear space
@@ -517,13 +521,17 @@ main()
 
     // float hue = float(200 + (tile_index % 700)) / 1000.0;
     // float hue = float(000 + (tile_index % 700)) / 1000.0;
-    // float hue = float(tile_index % 300) / 300.0;
+#ifdef ENABLE_CLUSTERED_SHADING
+    float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
+#else
+    float hue = 0.5;
+#endif
 
     // float hue = float(200 + (tile_index % 700)) / 1000.0;
-    // float r = abs(hue * 6.0 - 3.0) - 1.0;
-    // float g = 2.0 - abs(hue * 6.0 - 2.0);
-    // float b = 2.0 - abs(hue * 6.0 - 4.0);
-    // vec3 rgb = 0.7 * clamp(vec3(r, g, b), 0.0, 1.0);
+    float r = abs(hue * 6.0 - 3.0) - 1.0;
+    float g = 2.0 - abs(hue * 6.0 - 2.0);
+    float b = 2.0 - abs(hue * 6.0 - 4.0);
+    vec3 rgb = 0.7 * clamp(vec3(r, g, b), 0.0, 1.0);
     // frag_color = vec4(pow(rgb, vec3(INV_GAMMA)), alpha);
     // frag_color = vec4(rgb, alpha);
 
@@ -531,8 +539,9 @@ main()
     float amount_blue = float(num_area_lights/5.0);
     float amount_green = 0.2;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
-    
-    frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
+    vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);
+    frag_color = vec4(col, alpha);
+    // frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
 #else
     // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
     frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);
