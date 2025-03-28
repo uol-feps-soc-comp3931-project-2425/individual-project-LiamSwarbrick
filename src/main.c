@@ -158,7 +158,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 #define CLUSTER_GRID_SIZE_X 32//32//16 
 #define CLUSTER_GRID_SIZE_Y 32//32//9
 #define CLUSTER_GRID_SIZE_Z 16//32
-#define CLUSTER_NORMALS_COUNT 24//6//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 6//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 100
 
@@ -809,6 +809,10 @@ typedef struct Program
     u32 cluster_normals_cubemap;  // get the quantized normal using a cubemap lookup.
     u32 representative_normals_1dtexure;  // the inverse of the cubemap (go from normal index to vector)
 
+    // Atomic buffers
+    u32 light_ops_atomic_counter_buffer;
+    u32 last_light_ops_value;
+
     // Dynamically add/change point lights in scene here
     DynamicArray point_lights;
     DynamicArray area_lights;
@@ -982,6 +986,15 @@ init_global_renderer_buffers()
     glCreateBuffers(1, &program.area_light_ssbo);
     glNamedBufferData(program.area_light_ssbo, program.area_light_ssbo_max * sizeof(AreaLight), NULL, GL_DYNAMIC_DRAW);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_AREALIGHTS, program.area_light_ssbo);
+
+    // Init atomic counter to profile number of light operations
+    if (program.light_ops_atomic_counter_buffer)
+    {
+        glDeleteBuffers(1, &program.light_ops_atomic_counter_buffer);
+    }
+    glCreateBuffers(1, &program.light_ops_atomic_counter_buffer);
+    glNamedBufferData(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, program.light_ops_atomic_counter_buffer);
 }
 
 void
@@ -1029,7 +1042,7 @@ execute_pbr_draw_call(u32 shader_program, PBRDrawCall* draw_call)
         glBindTextureUnit(TEXUNIT_cluster_normals_cubemap, program.cluster_normals_cubemap);
         glBindTextureUnit(TEXUNIT_representative_normals_texture, program.representative_normals_1dtexure);
     }
-
+    
     glBindVertexArray(draw_call->vao);
     
     cgltf_primitive* prim = draw_call->prim;
@@ -1444,10 +1457,14 @@ draw_gltf_scene(Scene* scene)
     u32 light_assignment_shader = program.shader_light_assignment;
     b32 enable_clustered_shading = program.is_clustered_shading_enabled;
 
-    // Make sure SSBOs are aren't unbound by thirdparty GUI library
+    // OLD UNNECESSARY: Make sure SSBOs are aren't unbound by thirdparty GUI library
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_POINTLIGHTS, program.point_light_ssbo);
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_AREALIGHTS, program.area_light_ssbo);
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
+
+    // Reset light op counter to 0
+    u32 zero = 0;
+    glNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &zero);
 
     u32 num_point_lights = array_length(&program.point_lights, sizeof(PointLight));
     u32 num_area_lights = array_length(&program.area_lights, sizeof(AreaLight));
@@ -1511,7 +1528,7 @@ draw_gltf_scene(Scene* scene)
             mapped_pl[7] = point_light->intensity;
         }
         glUnmapNamedBuffer(program.point_light_ssbo);
-        //
+        
         // Update area lights SSBO:
         f32* mapped_arealight_ssbo = (float*)glMapNamedBuffer(program.area_light_ssbo, GL_WRITE_ONLY);
         for (u32 area_id = 0; area_id < num_area_lights; ++area_id)
@@ -1752,6 +1769,9 @@ draw_gltf_scene(Scene* scene)
 
     free_array(&opaque_draw_calls);
     free_array(&transparent_draw_calls);
+
+    // Check number of light ops
+    glGetNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &program.last_light_ops_value);
 }
 
 void
@@ -1856,6 +1876,11 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear = 0.5f;
         out_loaded_scene->attenuation_quadratic = 0.2f;
+
+        // Camera settings for reproducing exact test scene
+        glm_vec3_copy((vec3){ -20.200048f, 16.906214f, -126.027779f }, program.cam.pos);
+        program.cam.pitch = 0.299047f;
+        program.cam.yaw = 2.456063f;
     }
     else
     {
@@ -1883,17 +1908,26 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     }
 
     // Spawn some area lights
+    if (scene_id == 1)
+    {
+        AreaLight al;
+        al = make_area_light((vec3){5.270933,-4.543071,-53.789848}, (vec3){-0.694041,-0.684534,0.222981}, 0, 3, 0.2f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){5.410935,-2.272083,-48.796303}, (vec3){0.749683,-0.656189,-0.085968}, 0, 4, 0.5f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-2.931523,3.543194,-46.665058}, (vec3){-0.569861,0.701331,0.428245}, 0, 3, 0.6f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+    }
     if (scene_id == 3)
     {
         AreaLight al;
-        al = make_area_light((vec3){-5.528228,0.563686,-4.714774}, (vec3){-0.639877,-0.004516,-0.768464}, 0, 5);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){2.444456,2.973819,-5.098126}, (vec3){0.888351,-0.110246,0.445734}, 0, 4);push_element_copy(   &program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){2.437656,0.434195,1.099524}, (vec3){-0.686625,-0.628744,-0.365003}, 0, 3);push_element_copy(  &program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){-6.828334,2.708745,-5.153105}, (vec3){-0.997019,0.013983,-0.075884}, 0, 3);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){-4.408458,5.684846,-6.819602}, (vec3){-0.987434,-0.090130,0.129809}, 0, 4);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 0.0f, 1.0f, 0.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        // al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 1.0f, 0.0f, 0.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        // al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 0.0f, 0.0f, 1.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-5.528228,0.563686,-4.714774}, (vec3){-0.639877,-0.004516,-0.768464}, 0, 5, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){2.444456,2.973819,-5.098126}, (vec3){0.888351,-0.110246,0.445734}, 0, 4, -1.0f);push_element_copy(   &program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){2.437656,0.434195,1.099524}, (vec3){-0.686625,-0.628744,-0.365003}, 0, 3, -1.0f);push_element_copy(  &program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-6.828334,2.708745,-5.153105}, (vec3){-0.997019,0.013983,-0.075884}, 0, , -1.0f3);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){-4.408458,5.684846,-6.819602}, (vec3){-0.987434,-0.090130,0.129809}, 0, 4, -1.0f);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 0.0f, 1.0f, 0.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+
+        al = make_area_light((vec3){4.310672,15.536465,-71.449356}, (vec3){0.264739,0.085128,0.960555}, 0, 3, 0.03f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){12.480458,9.082880,-69.066299}, (vec3){0.264739,0.085128,0.960555}, 0, 4, 0.5f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-3.481347,10.381870,-110.580444}, (vec3){-0.246875,-0.681156,0.689259}, 0, 3, 0.8f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
     }
 
     size_t len = array_length(&program.point_lights, sizeof(PointLight));
@@ -2259,9 +2293,6 @@ reload_shaders(b32 only_reload_pbr_shaders)
 {
     printf("Compiling with cluster_max_lights=%d...\n", program.max_lights_per_cluster);
 
-    init_empty_cluster_grid();
-
-
     //
     // Silly hacky metaprogramming to add the following to the shaders:
     // add #define ENABLE_CLUSTERED_SHADING to top of headers when enabled
@@ -2367,7 +2398,7 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
 
     if (key == GLFW_KEY_ENTER && action == GLFW_PRESS)
     {
-        printf("{ %f, %f, %f },\n", program.cam.pos[0], program.cam.pos[1], program.cam.pos[2]);
+        printf("{ %f, %f, %f }, pitch=%f, yaw=%f,\n", program.cam.pos[0], program.cam.pos[1], program.cam.pos[2], program.cam.pitch, program.cam.yaw);
 
         int alt_key = mods & GLFW_MOD_ALT;
 
@@ -2396,14 +2427,14 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
                 program.cam.view_matrix[2][2],
             };
             
-            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n);
+            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n, -1.0f);
             push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             
             // Output code snippet to regenerate the lights
-            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d);",
+            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d, -1.0f);",
                 program.cam.pos[0],program.cam.pos[1],program.cam.pos[2],
                 true_forward[0],true_forward[1],true_forward[2], n);
-            printf("push_element_copy(&program.scene.area_lights, sizeof(AreaLight), &al);\n");
+            printf("push_element_copy(&program.area_lights, sizeof(AreaLight), &al);\n");
         }
     }
 
@@ -2671,10 +2702,10 @@ main(int argc, char** argv)
         // Load test scene with point lights
         // load_test_scene(1, &program.scene);
         load_test_scene(3, &program.scene);
-        glm_vec3_copy((vec3){ 0.577642f, -0.921296f, -28.718777f }, program.cam.pos);
-        program.cam.pitch = 0.0f;
-        program.cam.yaw = PI;
-        init_global_renderer_buffers();
+        // glm_vec3_copy((vec3){ 0.577642f, -0.921296f, -28.718777f }, program.cam.pos);
+        // program.cam.pitch = 0.0f;
+        // program.cam.yaw = PI;
+
         // Add temporary area light
         
     }
@@ -2722,7 +2753,7 @@ main(int argc, char** argv)
 
 
             char title[512] = { 0 };
-            sprintf(title, "%s Hardware: %s FPS: %f (VSYNC)", window_title, program.driver_name, displayed_fps);
+            sprintf(title, "%s Hardware: %s FPS: %f (VSYNC) Light Ops: %d", window_title, program.driver_name, displayed_fps, program.last_light_ops_value);
             glfwSetWindowTitle(program.window, title);
         }
 
@@ -2764,99 +2795,6 @@ main(int argc, char** argv)
             {
                 // Sun direction Editing
                 {
-                    /*
-                    float slider_column_widths[] = { 0.2f, 0.6f, 0.2f };  // 20% label, 60% slider, 20% zero button
-                    nk_layout_row(program.gui_context, NK_DYNAMIC, 25, 3, slider_column_widths);
-                    // nk_layout_row_dynamic(program.gui_context, 25, 3);
-                    // Sliders for setting sun direction manually
-                    static vec3 slider_sun_dir = { 0.0f, 1.0f, 0.0f };
-                    nk_label(program.gui_context, "Sun Direction - X", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_sun_dir[0], 1.0f, 0.01f)) {}
-                    if (nk_button_label(program.gui_context, "Zero X")) { slider_sun_dir[0] = 0.0f; }
-
-                    nk_label(program.gui_context, "Sun Direction - Y", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_sun_dir[1], 1.0f, 0.01f)) {}
-                    if (nk_button_label(program.gui_context, "Zero Y")) { slider_sun_dir[1] = 0.0f; }
-
-                    nk_label(program.gui_context, "Sun Direction - Z", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_sun_dir[2], 1.0f, 0.01f)) {}
-                    if (nk_button_label(program.gui_context, "Zero Z")) { slider_sun_dir[2] = 0.0f; }
-                    
-                    // Sun intensity
-                    static float slider_sun_intensity = 0.0f;
-                    nk_label(program.gui_context, "Sun Intensity", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, 0.0f, &slider_sun_intensity, 25.0f, 0.1f)) {}
-
-                    if (nk_button_label(program.gui_context, "Reload shader"))
-                    {
-                        // Reload shader
-                        program.shader_pbr_metallic_roughness = load_shader_from_files("shader_src/diffuse_light_vertex.glsl", "shader_src/diffuse_light_fragment.glsl", "diffuse_light_shader");
-                    }
-
-                    // Point intensity
-                    static float slider_point_intensity = 10.0f;
-                    nk_label(program.gui_context, "Point Intensity", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, 0.0f, &slider_point_intensity, 100.0f, 0.2f)) {}
-                    nk_label(program.gui_context, "gui padding", NK_TEXT_LEFT);
-
-                    // Sliders for setting point light manually
-                    static vec3 slider_point_pos = { 0.0f, 1.0f, 0.0f };
-                    nk_label(program.gui_context, "Point Pos - X", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -10.0f, &slider_point_pos[0], 10.0f, 0.1f)) {}
-                    if (nk_button_label(program.gui_context, "Zero X")) { slider_point_pos[0] = 0.0f; }
-
-                    nk_label(program.gui_context, "Point Pos - Y", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_point_pos[1], 10.0f, 0.1f)) {}
-                    if (nk_button_label(program.gui_context, "Zero Y")) { slider_point_pos[1] = 0.0f; }
-
-                    nk_label(program.gui_context, "Point Pos - Z", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -10.0f, &slider_point_pos[2], 10.0f, 0.1f)) {}
-                    if (nk_button_label(program.gui_context, "Zero Z")) { slider_point_pos[2] = 0.0f; }
-
-                    // Sliders for setting animated sun rotation axis
-                    static vec3 slider_sun_rot_axis = { 0.5f, 0.4f, 0.1f };
-                    nk_label(program.gui_context, "Anim Axis - X", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_sun_rot_axis[0], 1.0f, 0.01f)) {}
-                    if (nk_button_label(program.gui_context, "Zero X")) { slider_sun_rot_axis[0] = 0.0f; }
-
-                    nk_label(program.gui_context, "Anim Axis - Y", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_sun_rot_axis[1], 1.0f, 0.01f)) {}
-                    if (nk_button_label(program.gui_context, "Zero Y")) { slider_sun_rot_axis[1] = 0.0f; }
-
-                    nk_label(program.gui_context, "Anim Axis - Z", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, -1.0f, &slider_sun_rot_axis[2], 1.0f, 0.01f)) {}
-                    if (nk_button_label(program.gui_context, "Zero Z")) { slider_sun_rot_axis[2] = 0.0f; }
-
-                    // Slider for near and far clipping planes
-                    nk_label(program.gui_context, "Near and far planes", NK_TEXT_LEFT);
-                    if (nk_slider_float(program.gui_context, 0.01, &program.cam.near_plane, 1.0f, 0.01f)) {}
-                    if (nk_slider_float(program.gui_context, 50.0f, &program.cam.far_plane, 1000.0f, 25.0f)) {}
-
-                    // Checkbox to rotate sun over time
-                    static int animate_sun_rotation = 0;
-                    static vec3 animated_sun_dir_start = { 0.0f, 1.0f, 0.0f };
-                    
-                    if (nk_checkbox_label(program.gui_context, "Animate Sun", &animate_sun_rotation))
-                    {
-                        glm_vec3_copy(slider_sun_dir, animated_sun_dir_start);
-                    }
-
-                    if (animate_sun_rotation)
-                    {
-                        glm_vec3_copy(animated_sun_dir_start, slider_sun_dir);
-                        glm_vec3_rotate(slider_sun_dir, program.time / 1.5f, slider_sun_rot_axis);
-                        glm_vec3_normalize(slider_sun_dir);  // So animated show properly in GUI
-                    }
-
-                    program.scene.sun_intensity = slider_sun_intensity;
-                    glm_vec3_copy(slider_sun_dir, program.scene.sun_direction);
-                    glm_vec3_normalize(program.scene.sun_direction);
-
-                    PointLight* p = get_element(&program.scene.point_lights, sizeof(PointLight), array_length(&program.scene.point_lights, sizeof(PointLight))-1);
-                    glm_vec3_copy(slider_point_pos, p->position);
-                    p->intensity = slider_point_intensity;
-                    */
-
                     nk_layout_row_dynamic(program.gui_context, 0, 3);
 
                     if (nk_button_label(program.gui_context, "Load Sponza"))
@@ -2874,9 +2812,14 @@ main(int argc, char** argv)
                     {
                         free_scene(program.scene);
                         load_test_scene(1, &program.scene);
-                        glm_vec3_copy((vec3){ 0.577642f, -0.921296f, -28.718777f }, program.cam.pos);
-                        program.cam.pitch = 0.0f;
-                        program.cam.yaw = PI;
+
+                        // glm_vec3_copy((vec3){ 0.577642f, -0.921296f, -28.718777f }, program.cam.pos);
+                        // program.cam.pitch = 0.0f;
+                        // program.cam.yaw = PI;
+
+                        glm_vec3_copy((vec3){ 3.123726, 0.563292, -53.807980 }, program.cam.pos);
+                        program.cam.pitch = 0.095518f;
+                        program.cam.yaw = 3.582217f;
                     }
 
                     if (nk_button_label(program.gui_context, "Load Lost Empire"))

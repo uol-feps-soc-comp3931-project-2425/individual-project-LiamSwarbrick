@@ -107,6 +107,8 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     layout (location = 21) uniform uint num_area_lights;
 #endif  // ENABLE_CLUSTERED_SHADING
 
+// #define COUNT_LIGHT_OPS
+layout (binding = 0, offset = 0) uniform atomic_uint light_ops_atomic_counter_buffer;
 
 #define M_PI 3.1415926535897932384626433832795
 #define INV_GAMMA (1.0 / 2.2)
@@ -209,6 +211,8 @@ Why is Sutherland-Hodgman algorithm acceptable?
 vec3
 integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
 {
+    // atomicCounterIncrement(light_ops_atomic_counter_buffer);
+
     // Original code:
     // float x = acos(dot(point_i, point_j));
     // float cross_z = normalize(cross(point_i, point_j)).z;
@@ -378,15 +382,6 @@ main()
     vec3 sun_radiance = pbr_metallic_roughness_brdf(base_color, metallic, roughness, V, L_sun, N, H_sun)
         * NdotL_sun * sun_color * sun_intensity;
     
-/* Adding shit to make figure START:*/
-    // sun_radiance = simple_brdf()
-    // vec3 col = base_color.xyz;
-
-    // frag_color = vec4(pow(col, vec3(INV_GAMMA)), alpha);
-    // return;
-/* END */
-    
-    // Lights (TODO: Put area lights in here as well)
     vec3 sum_pl_radiance = vec3(0.);
     vec3 sum_arealight_radiance = vec3(0.0);  // TODO
 
@@ -402,15 +397,6 @@ main()
 #else
     uint normal_index = texture(cluster_normals_cubemap, N).r;
 #endif
-    // uint normal_index;// TODO: Want better normal scheme that autoscales with CLUSTER_NORMALS_COUNT
-    // vec3 abs_norm = abs(N);
-    // if (abs_norm.x >= abs_norm.y && abs_norm.x >= abs_norm.z)
-    //     normal_index = (N.x > 0.0) ? 0u : 1u;
-    // else if (abs_norm.y >= abs_norm.x && abs_norm.y >= abs_norm.z)
-    //     normal_index = (N.y > 0.0) ? 2u : 3u;
-    // else
-    //     normal_index = (N.z > 0.0) ? 4u : 5u;
-    // normal_index = sample cubemap at N
 
     uint combined_z = tile_z * CLUSTER_NORMALS_COUNT + normal_index;
     uint tile_index = tile.x + (tile.y * grid_size.x) + (combined_z * grid_size.x * grid_size.y);
@@ -418,7 +404,7 @@ main()
     uint num_point_lights = clusters[tile_index].point_count;
     uint num_area_lights = clusters[tile_index].area_count;
 
-    // TODO:    
+    // FUTURE TODO?:    
     // if (tile_z == grid_size.z - 1)
     // {
     //     // Special far cluster lighting system?
@@ -459,6 +445,9 @@ main()
             * NdotL_point * pl_color * pl_intensity * attenuation;
 
         sum_pl_radiance += pl_radiance;
+#ifdef COUNT_LIGHT_OPS
+        atomicCounterIncrement(light_ops_atomic_counter_buffer);
+#endif  // COUNT_LIGHT_OPS
     }
 
     // Area Lights
@@ -499,6 +488,9 @@ main()
         // specular = vec3(0.00);
         // diffuse = vec3(0.00);
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
+#ifdef COUNT_LIGHT_OPS
+        atomicCounterIncrement(light_ops_atomic_counter_buffer);
+#endif  // COUNT_LIGHT_OPS
     }
 
     // Add ambient light
@@ -523,6 +515,7 @@ main()
     // float hue = float(000 + (tile_index % 700)) / 1000.0;
 #ifdef ENABLE_CLUSTERED_SHADING
     float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
+    // float hue = 0.5;
 #else
     float hue = 0.5;
 #endif

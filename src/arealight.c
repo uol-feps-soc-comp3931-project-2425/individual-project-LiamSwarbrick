@@ -14,14 +14,22 @@ transform_area_light(AreaLight* al, mat4 transform)
 }
 
 AreaLight
-make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n)
+make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, float hue)
 {
     AreaLight al;
-    vec3 rgb; hsv_to_rgb(rng_rangef(0.0f, 1.0f), 1.0f, 1.0f, rgb);
+
+    float intensity = 25.0f;
+    if (hue < 0.0f)
+    {
+        hue = rng_rangef(0.0f, 1.0f);
+        intensity = 10.0f;
+    }
+    
+    vec3 rgb; hsv_to_rgb(hue, 1.0f, 1.0f, rgb);
     al.color_rgb_intensity_a[0] = rgb[0];
     al.color_rgb_intensity_a[1] = rgb[1];
     al.color_rgb_intensity_a[2] = rgb[2];
-    al.color_rgb_intensity_a[3] = rng_rangef(3.0f, 10.0f);
+    al.color_rgb_intensity_a[3] = intensity;// rng_rangef(3.0f, 10.0f);
 
     al.n = n;
     al.is_double_sided = is_double_sided;

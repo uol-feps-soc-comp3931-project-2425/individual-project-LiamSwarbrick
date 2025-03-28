@@ -29,7 +29,7 @@ extern const float star_points[40];
 extern const unsigned int star_indices[24];
 
 void transform_area_light(AreaLight* al, mat4 transform);
-AreaLight make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n);
+AreaLight make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, float hue);
 float polygon_area_aabb_upper_bound(AreaLight* al);
 float calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable);
 

@@ -65,6 +65,7 @@ struct NormalCone
 {
     float half_angle;
     float cos_threshold;
+    float sin_threshold;
     vec3 cluster_normal;
 };
 
@@ -90,6 +91,7 @@ test_sphere_aabb(uint i, Cluster cluster, NormalCone normal_cone)
     }
 
 #if CLUSTER_NORMALS_COUNT != 1
+// NOTE: Backface culling pointlights not working properly
     // // Does light affect this cluster based on normal (Backface culling of lights)
     // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
     // vec3 to_light = normalize(light_pos - cluster_center);
@@ -180,9 +182,21 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     //     return true;
     // }
 #else
-    // Using a specular tau of a very shiny material
-    // float specular_tau = 0.5;  // For scene with mostly rough materials
-    float specular_tau = 1e-6;  // For scene with very shiny materials
+    float param_roughness = 1.0;
+    float param_min_intensity = 0.01;
+    float param_intensity_saturation = 0.5;
+
+    vec3 light_sphere_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
+    float light_sphere_radius = area_lights[i].sphere_of_influence_center_xyz_radius_w.w;
+    float distance_to_light = distance(cluster_center, light_sphere_center);
+    float effective_distance = max(distance_to_light - light_sphere_radius, 0.0);
+    float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
+    float scaled_intensity = (area_lights[i].color_rgb_intensity_a.a * attenuation) / 
+                            (area_lights[i].color_rgb_intensity_a.a * attenuation + param_intensity_saturation);
+    float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
+
+    // float specular_tau = 0.9;  // For scene with mostly rough materials
+    // float specular_tau = 1e-6;  // For scene with very shiny materials
     float max_dot = 0.0;
     for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
     {
@@ -192,7 +206,29 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
         vec3 H = normalize(view_dir + light_to_cluster_dir);
         max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
     }
-    if (max_dot >= specular_tau)
+
+    for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
+    {
+        vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
+        vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
+        vec3 view_dir = normalize(-cluster_center);
+        vec3 H = normalize(view_dir + light_to_cluster_dir);
+
+        float H_dot_C = dot(H, normal_cone.cluster_normal);
+        float term = H_dot_C * normal_cone.cos_threshold + normal_cone.sin_threshold * sqrt(1.0 - H_dot_C * H_dot_C);
+        float max_N_dot_H = max(1.0, term); // Clamp to 1.0 if inside cone
+
+        max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
+        max_dot = max(max_dot, max_N_dot_H);
+        if (max_dot > specular_tau) break;
+
+        // if (max_N_dot_H >= max_dot)
+        // {
+        //     max_dot = max_N_dot_H;
+        //     if (max_dot > specular_tau) break; // Early exit
+        // }
+    }
+    if (max_dot > specular_tau)
     {
         return true;
     }
@@ -245,13 +281,16 @@ main()
     // This would be a second cubemap I generate on the CPU 
     // UPDATE: THIS IS FINISHED NOW REMOVE THE ABOVE
 
-    // TODO: Double check if half angle is correct
     NormalCone normal_cone;
-    normal_cone.half_angle = M_PI / (4.0 * sqrt(CLUSTER_NORMALS_COUNT/6));   // CLUSTER_NORMALS_COUNT= 6n^2 => n = sqrt(count/6)
+    float n = sqrt(CLUSTER_NORMALS_COUNT/6);  // since CLUSTER_NORMALS_COUNT= 6n^2
+    // normal_cone.half_angle = M_PI / (4.0 * sqrt(CLUSTER_NORMALS_COUNT/6));  // OLD BAD HALF ANGLE
+    // normal_cone.half_angle = sqrt(2.0) * atan(1.0 / n);
+    normal_cone.half_angle = atan(sqrt(2.0) / n);  // Still playing with this
     normal_cone.cos_threshold = cos(normal_cone.half_angle);
+    normal_cone.sin_threshold = sin(normal_cone.half_angle);
     normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];
 
-    // Reinitialize count to 0 before computing this frames cluster
+    // Reinitialize counters to 0 before computing this frames cluster
     cluster.point_count = 0;
     cluster.area_count = 0;
 
