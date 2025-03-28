@@ -1911,9 +1911,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     if (scene_id == 1)
     {
         AreaLight al;
-        al = make_area_light((vec3){5.270933,-4.543071,-53.789848}, (vec3){-0.694041,-0.684534,0.222981}, 0, 3, 0.2f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){5.410935,-2.272083,-48.796303}, (vec3){0.749683,-0.656189,-0.085968}, 0, 4, 0.5f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){-2.931523,3.543194,-46.665058}, (vec3){-0.569861,0.701331,0.428245}, 0, 3, 0.6f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        // al = make_area_light((vec3){5.270933,-4.543071,-53.789848}, (vec3){-0.694041,-0.684534,0.222981}, 0, 3, 0.2f, 1.0f, 1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){5.410935,-2.272083,-48.796303}, (vec3){0.749683,-0.656189,-0.085968}, 0, 4, 0.5f, 25.0f, 2.0f, 3.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-2.931523,3.543194,-46.665058}, (vec3){-0.569861,0.701331,0.428245}, 0, 3, 0.6f , 20.0f, 2.0f, 3.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
     }
     if (scene_id == 3)
     {
@@ -1925,9 +1925,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         // al = make_area_light((vec3){-4.408458,5.684846,-6.819602}, (vec3){-0.987434,-0.090130,0.129809}, 0, 4, -1.0f);push_element_copy( &program.area_lights, sizeof(AreaLight), &al);
         // al = make_area_light((vec3){ 0.0f, 0.0f, 0.0f }, (vec3){ 0.0f, 1.0f, 0.0f }, 1, 4); push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
 
-        al = make_area_light((vec3){4.310672,15.536465,-71.449356}, (vec3){0.264739,0.085128,0.960555}, 0, 3, 0.03f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){12.480458,9.082880,-69.066299}, (vec3){0.264739,0.085128,0.960555}, 0, 4, 0.5f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-        al = make_area_light((vec3){-3.481347,10.381870,-110.580444}, (vec3){-0.246875,-0.681156,0.689259}, 0, 3, 0.8f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){4.310672,15.536465,-71.449356}, (vec3){0.264739,0.085128,0.960555}, 0, 3, 0.3f   , 20.0f, 3.0f, 3.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){12.480458,9.082880,-69.066299}, (vec3){0.264739,0.085128,0.960555}, 0, 4, 0.2f    , 20.0f, 7.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        al = make_area_light((vec3){-3.481347,10.381870,-110.580444}, (vec3){-0.246875,-0.681156,0.689259}, 0, 3, 0.4f, 10.0f, 1.0f, 4.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
     }
 
     size_t len = array_length(&program.point_lights, sizeof(PointLight));
@@ -2427,11 +2427,11 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
                 program.cam.view_matrix[2][2],
             };
             
-            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n, -1.0f);
+            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n, -1.0f, -1.0f, -1.0f, -1.0f);
             push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             
             // Output code snippet to regenerate the lights
-            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d, -1.0f);",
+            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d, -1.0f, -1.0f, -1.0f, -1.0f);",
                 program.cam.pos[0],program.cam.pos[1],program.cam.pos[2],
                 true_forward[0],true_forward[1],true_forward[2], n);
             printf("push_element_copy(&program.area_lights, sizeof(AreaLight), &al);\n");
@@ -2783,6 +2783,20 @@ main(int argc, char** argv)
         
         update_free_camera(&program.cam);
         
+        // Animate area light intensity
+        // for (int i = 0; i < array_length(&program.area_lights, sizeof(AreaLight)); ++i)
+        // {
+        //     AreaLight* al = get_element(&program.area_lights, sizeof(AreaLight), i);
+            
+        //     float max_intensity = 50.0f;
+        //     static float intensity_velocity = 10.0f;
+            
+        //     al->color_rgb_intensity_a[3] += intensity_velocity * program.dt;
+        //     if (al->color_rgb_intensity_a[3] >= max_intensity || al->color_rgb_intensity_a[3] <= 0.0f)
+        //     {
+        //         intensity_velocity = -intensity_velocity;
+        //     }
+        // }
 
 #ifndef DISABLE_GUI
         // Create GUI
@@ -2791,7 +2805,7 @@ main(int argc, char** argv)
             
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
 
-            if (nk_begin(program.gui_context, "Scene - Editor", nk_rect(0, program.h-140, program.w, 140), nk_flags))
+            if (nk_begin(program.gui_context, "Scene - Editor", nk_rect(0, program.h-120, program.w, 120), nk_flags))
             {
                 // Sun direction Editing
                 {

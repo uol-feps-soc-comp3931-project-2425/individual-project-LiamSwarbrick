@@ -38,6 +38,7 @@ float randomf();
 float rng_rangef(float min, float max);
 
 void hsv_to_rgb(float h, float s, float v, float out_rgb[3]);
+void rgb_to_hsv(float r, float g, float b, float out_hsv[3]);
 
 char* malloc_strcat(const char* a, const char* b);
 char* load_text_file(const char* filename);

@@ -107,7 +107,7 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     layout (location = 21) uniform uint num_area_lights;
 #endif  // ENABLE_CLUSTERED_SHADING
 
-// #define COUNT_LIGHT_OPS
+#define COUNT_LIGHT_OPS
 layout (binding = 0, offset = 0) uniform atomic_uint light_ops_atomic_counter_buffer;
 
 #define M_PI 3.1415926535897932384626433832795

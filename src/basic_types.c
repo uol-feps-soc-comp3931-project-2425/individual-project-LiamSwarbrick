@@ -48,6 +48,36 @@ hsv_to_rgb(float h, float s, float v, float out_rgb[3])
     out_rgb[2] = b;
 }
 
+void
+rgb_to_hsv(float r, float g, float b, float out_hsv[3])
+{
+    float max = (r > g) ? ((r > b) ? r : b) : ((g > b) ? g : b);
+    float min = (r < g) ? ((r < b) ? r : b) : ((g < b) ? g : b);
+    float delta = max - min;
+    float h, s, v = max;
+
+    if (delta < 1e-6) {
+        h = 0.0f; // Undefined hue
+    } else {
+        if (max == r) {
+            h = (g - b) / delta;
+        } else if (max == g) {
+            h = 2.0f + (b - r) / delta;
+        } else {
+            h = 4.0f + (r - g) / delta;
+        }
+        h /= 6.0f;
+        if (h < 0.0f) h += 1.0f;
+    }
+
+    s = (max <= 0.0f) ? 0.0f : (delta / max);
+    
+    out_hsv[0] = h;
+    out_hsv[1] = s;
+    out_hsv[2] = v;
+}
+
+
 
 char*
 malloc_strcat(const char* a, const char* b)

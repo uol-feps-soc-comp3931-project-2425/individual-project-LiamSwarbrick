@@ -285,7 +285,7 @@ main()
     float n = sqrt(CLUSTER_NORMALS_COUNT/6);  // since CLUSTER_NORMALS_COUNT= 6n^2
     // normal_cone.half_angle = M_PI / (4.0 * sqrt(CLUSTER_NORMALS_COUNT/6));  // OLD BAD HALF ANGLE
     // normal_cone.half_angle = sqrt(2.0) * atan(1.0 / n);
-    normal_cone.half_angle = atan(sqrt(2.0) / n);  // Still playing with this
+    normal_cone.half_angle = atan(sqrt(2.0) / n);
     normal_cone.cos_threshold = cos(normal_cone.half_angle);
     normal_cone.sin_threshold = sin(normal_cone.half_angle);
     normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];

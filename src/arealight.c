@@ -14,15 +14,32 @@ transform_area_light(AreaLight* al, mat4 transform)
 }
 
 AreaLight
-make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, float hue)
+make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, float hue, float intensity, float width, float height)
 {
+    // When hue is negative we pick a random color
+    // When width is negative we choose random dimensions
+
     AreaLight al;
 
-    float intensity = 25.0f;
+    vec3 scale_vector = { width, height, 1.0f };
     if (hue < 0.0f)
     {
         hue = rng_rangef(0.0f, 1.0f);
-        intensity = 10.0f;
+        intensity = rng_rangef(3.0, 25.0f);
+    }
+
+    if (width < 0.0f)
+    {
+        scale_vector[0] = rng_rangef(0.3f, 3.0f);
+        if (n != 6)
+        {
+            scale_vector[1] = rng_rangef(0.3f, 3.0f);
+        }
+        else
+        {
+            // Scale uniformly for star shape.
+            scale_vector[1] = scale_vector[0];
+        }
     }
     
     vec3 rgb; hsv_to_rgb(hue, 1.0f, 1.0f, rgb);
@@ -56,8 +73,7 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, f
     }
     
     mat4 scale = GLM_MAT4_IDENTITY_INIT;
-    if (n != 6)
-        glm_scale(scale, (vec3){ rng_rangef(0.3f, 2.0f), rng_rangef(0.3f, 2.0f), rng_rangef(0.3f, 2.0f) });
+    glm_scale(scale, scale_vector);
 
     mat4 rot = GLM_MAT4_IDENTITY_INIT;
     {
