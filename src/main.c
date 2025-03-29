@@ -158,7 +158,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 #define CLUSTER_GRID_SIZE_X 32//32//16 
 #define CLUSTER_GRID_SIZE_Y 32//32//9
 #define CLUSTER_GRID_SIZE_Z 16//32
-#define CLUSTER_NORMALS_COUNT 6//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 100
 
@@ -811,6 +811,7 @@ typedef struct Program
     u32 representative_normals_1dtexure;  // the inverse of the cubemap (go from normal index to vector)
 
     // Atomic buffers
+    b32 is_light_op_counting_enabled;
     u32 light_ops_atomic_counter_buffer;
     u32* light_ops_mapped_pointer;
     u32 last_light_ops_value;
@@ -994,11 +995,17 @@ init_global_renderer_buffers()
     // Init atomic counter to profile number of light operations
     if (program.light_ops_atomic_counter_buffer)
     {
+        if (program.light_ops_mapped_pointer)
+        {
+            glUnmapNamedBuffer(program.light_ops_atomic_counter_buffer);
+            program.light_ops_mapped_pointer = NULL;
+        }
+
         glDeleteBuffers(1, &program.light_ops_atomic_counter_buffer);
     }
     glCreateBuffers(1, &program.light_ops_atomic_counter_buffer);
     // glNamedBufferData(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_DYNAMIC_DRAW);
-    glNamedBufferStorage(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT | GL_DYNAMIC_STORAGE_BIT);
+    glNamedBufferStorage(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT | GL_DYNAMIC_STORAGE_BIT);
     glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, program.light_ops_atomic_counter_buffer);
     
     // Persistantly map atomic counter buffer
@@ -2075,9 +2082,10 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         al = make_area_light((vec3){-3.481347,10.381870,-110.580444}, (vec3){-0.246875,-0.681156,0.689259}, 0, 3, 0.4f, 10.0f, 1.0f, 4.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
     }
 
-    size_t len = array_length(&program.point_lights, sizeof(PointLight));
-
-    printf("Point Light Array len: %d\n", (int)len);
+    size_t len_pl = array_length(&program.point_lights, sizeof(PointLight));
+    size_t len_al = array_length(&program.area_lights, sizeof(AreaLight));
+    printf("Point Light Array len: %d\n", (int)len_pl);
+    printf("Area Light Array len: %d\n", (int)len_al);
 
     // Init directional lighting
     if (scene_id >= 0 && scene_id <= 2)
@@ -2104,6 +2112,10 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->sun_color[1] = 1.0f;
         out_loaded_scene->sun_color[2] = 1.0f;
     }
+
+    // printf("TEMP: Deleting point lights for now\n");
+    // free_array(&program.point_lights);
+    // program.point_lights = create_array(1 * sizeof(PointLight));
 
     init_global_renderer_buffers();
 }
@@ -2465,14 +2477,21 @@ reload_shaders(b32 only_reload_pbr_shaders)
     // itoa(program.max_lights_per_cluster, cluster_max_lights_string, 10);
     sprintf(cluster_max_lights_string, "%d", program.max_lights_per_cluster);
 
+    char light_ops_allow_char = ' ';
+    if (!program.is_light_op_counting_enabled)
+    {
+        light_ops_allow_char = '/';  // Stupid way to comment out #define COUNT_LIGHT_OPS
+    }
+
     char header_text[1024] = { 0 };
     snprintf(header_text, sizeof(header_text),
             "%s\n#define CLUSTER_GRID_SIZE_X " xstr(CLUSTER_GRID_SIZE_X)
             "\n#define CLUSTER_GRID_SIZE_Y " xstr(CLUSTER_GRID_SIZE_Y)
             "\n#define CLUSTER_GRID_SIZE_Z " xstr(CLUSTER_GRID_SIZE_Z)
             "\n#define CLUSTER_NORMALS_COUNT " xstr(CLUSTER_NORMALS_COUNT)
-            "\n#define CLUSTER_MAX_LIGHTS %s\n",
-        base_header_text, cluster_max_lights_string);
+            "\n#define CLUSTER_MAX_LIGHTS %s"
+            "\n%c%c#define COUNT_LIGHT_OPS",
+        base_header_text, cluster_max_lights_string, light_ops_allow_char, light_ops_allow_char);
 
 
     // Compile
@@ -2584,14 +2603,25 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
         }
     }
 
-    if (key == GLFW_KEY_3 && action == GLFW_PRESS)
-        program.last_number_key = 3;
-    else if (key == GLFW_KEY_4)
-        program.last_number_key = 4;
-    else if (key == GLFW_KEY_5)
-        program.last_number_key = 5;
-    else if (key == GLFW_KEY_6)
-        program.last_number_key = 6;
+    if (action == GLFW_PRESS)
+    {
+        if (key == GLFW_KEY_3)
+            program.last_number_key = 3;
+        else if (key == GLFW_KEY_4)
+            program.last_number_key = 4;
+        else if (key == GLFW_KEY_5)
+            program.last_number_key = 5;
+        else if (key == GLFW_KEY_6)
+            program.last_number_key = 6;
+        
+        // Teleport to same spot one keys:
+        if (key == GLFW_KEY_7)
+        {
+            glm_vec3_copy((vec3){ -0.286521, -3.771567, -88.778755 }, program.cam.pos);
+            program.cam.pitch = -0.067008f;
+            program.cam.yaw = 3.043161f;
+        }
+    }
 
     if (key == GLFW_KEY_E && action == GLFW_PRESS)
     {
@@ -2623,6 +2653,12 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
     if (key == GLFW_KEY_F3 && action == GLFW_PRESS)
     {
         program.is_clustered_shading_enabled = !program.is_clustered_shading_enabled;
+        reload_shaders(0);
+    }
+
+    if (key == GLFW_KEY_F4 && action == GLFW_PRESS)
+    {
+        program.is_light_op_counting_enabled = !program.is_light_op_counting_enabled;
         reload_shaders(0);
     }
 
@@ -2768,7 +2804,7 @@ main(int argc, char** argv)
 
         glfwMakeContextCurrent(program.window);
         gladLoadGL();
-        glfwSwapInterval(1);
+        glfwSwapInterval(0);
 
         // int red_bits, green_bits, blue_bits, alpha_bits;
         // glBindFramebuffer(GL_FRAMEBUFFER, 0);

@@ -169,21 +169,8 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 // SPECULAR:
     bool specular_passed = false;
     vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    vec3 view_dir = normalize(-cluster_center);
 
-#if CLUSTER_NORMALS_COUNT == 1  // Normal based clustering disabled
-// For now I'm disabling specular with normals disabled, so I can show why specular clustering is necessary
-
-    // // This code only sorta works anyway
-    // vec3 light_pos = sphere.xyz;
-    // vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
-    // vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
-
-    // const float specular_threshold = 0.5;  // 0.0 for completely shiny materials in scene
-    // if (dot(light_to_cluster_dir, view_dir) >= specular_threshold)
-    // {
-    //     return true;
-    // }
-#else
     float param_roughness             = 1.0;
     float param_min_intensity         = 0.01;
     float param_intensity_saturation  = 10.0;//= 0.5;//=100.0;
@@ -199,14 +186,36 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
                             (area_lights[i].color_rgb_intensity_a.a * attenuation + param_intensity_saturation);
     float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
 
-    // float specular_tau = 0.9;  // For scene with mostly rough materials
-    // float specular_tau = 1e-6;  // For scene with very shiny materials
+
+#if CLUSTER_NORMALS_COUNT == 1  // Normal based clustering disabled
+    // // This code doesn't work
+    // vec3 light_pos = sphere.xyz;
+    // vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
+    // vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
+
+    // const float specular_threshold = 0.5;  // 0.0 for completely shiny materials in scene
+    // specular_passed = dot(light_to_cluster_dir, view_dir) >= specular_threshold;
+
+    // The only thing guarunteed to work is to assign specular to all clusters in the half space
+    // specular_passed = true;
+
+    vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
+    vec3 light_dir = normalize(light_center - cluster_center);
+    vec3 H = normalize(view_dir + light_dir);
+    float min_NdotH = sqrt(specular_tau);  // Convert intensity threshold to angular threshold
+
+    // Test if light could possible produce specular for any normal
+    specular_passed = dot(view_dir, H) > min_NdotH;
+
+    // Intensity falloff adjustment
+    specular_passed = specular_passed && (scaled_intensity > param_min_intensity);
+
+#else
     float max_dot = 0.0;
     for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
     {
         vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
         vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
-        vec3 view_dir = normalize(-cluster_center);
         vec3 H = normalize(view_dir + light_to_cluster_dir);
         max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
     }
@@ -215,7 +224,6 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     {
         vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
         vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
-        vec3 view_dir = normalize(-cluster_center);
         vec3 H = normalize(view_dir + light_to_cluster_dir);
 
         float H_dot_C = dot(H, normal_cone.cluster_normal);
