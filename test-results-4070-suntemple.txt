@@ -13,5 +13,18 @@ NORMAL COUNT | LOCATION A ops | fps   | LOCATION B ops | fps   | comment on arte
            6 |        8486997 |  37.5 |       12935652 |  37.5 | None after tuning correct parameters for scene
           24 |        8492041 |  15.0 |       13003057 |  15.0 | None after tuning correct parameters for scene
           54 |        8496759 |   7.0 |       12985008 |   7.5 | None after tuning correct parameters for scene
-           1 |        7152637 | 149.0 |       11945975 | 110.5 | Noticable specular incorrectness due to strange heuristic, could be tuned to be better but it's very fast right now so best for mostly-matte scenes.
+ Heuristic 1 |        7152637 | 149.0 |       11945975 | 110.5 | Noticable specular incorrectness due to strange heuristic, could be tuned to be better but it's very fast right now so best for mostly-matte scenes.
 
+Comments:
+- Interestingly, when I compared "Heuristic 1" to "6 normals" on my iGPU laptop,
+  the 6 normals got better performance...
+
+- Clearly need to profile the compute shading time on these GPUs, the normals compute must be expensive.
+- Of course Heuristic 1 is underassigning so saves computation there,
+  However its important to note that in both tests A and B, the artefacts aren't noticble.
+  The artefacts become noticible when moving around however and are horrible in some configurations.
+
+Future work:
+- Optimizing the compute shader by implementing the tree based, assignment instead of
+  bruteforce seems to be the ideal step for a proper lighting implementation.
+- This is because we need the normals for good specular, but the compute shader is slow right now.
