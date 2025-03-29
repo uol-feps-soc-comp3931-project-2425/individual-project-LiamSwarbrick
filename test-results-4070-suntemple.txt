@@ -1,13 +1,16 @@
 RESULTS:
 - Machine irrelevant since its only dependent on resolution but its the Lab Machine with NVIDIA GeForce RTX 4070
 - Counting number of area light ops at 1280x1080p in the Suntemple scene with ... area lights
-- Each LTC_Evaluate call counts as a light op, I could have counted edge integration as the light op since it accounts for polygonal lights of different sizes, but culling only affects the number of LTC_Evaluate calls, not the edge integration so I only considered that.
+- Each area light shade counts as a light op, this was a mistake it should have been each ltc evaluate call,
+ so i have to redo the test
+, I could have counted edge integration as the light op since it accounts for polygonal lights of different sizes, but culling only affects the number of LTC_Evaluate calls, not the edge integration so I only considered that.
 
 Suntemple specular parameters (This scene is only slightly glossy so 10.0):
 float param_roughness             = 1.0;
 float param_min_intensity         = 0.01;
 float param_intensity_saturation  = 10.0;
 
+123 area lights in scene.
 NORMAL COUNT | LOCATION A ops | fps   | LOCATION B ops | fps   | comment on artefacts
            1 |       89114000 |  25.0 |      102373650 |  25.0 | None since specular must be assigned to all clusters
            6 |        8486997 |  37.5 |       12935652 |  37.5 | None after tuning correct parameters for scene
@@ -28,3 +31,5 @@ Future work:
 - Optimizing the compute shader by implementing the tree based, assignment instead of
   bruteforce seems to be the ideal step for a proper lighting implementation.
 - This is because we need the normals for good specular, but the compute shader is slow right now.
+
+FUCK I DIDN'T COUNT DIFFUSE AND SPECULAR AS SEPERATE LIGHT OPS
