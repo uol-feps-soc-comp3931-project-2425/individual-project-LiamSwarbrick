@@ -111,15 +111,8 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, f
 
 
 float
-polygon_area_aabb_upper_bound(AreaLight* al)
+polygon_area(AreaLight* al)
 {
-    /*
-    An upper bound area approximation is need to predict the radius of the
-    sphere of influence approximation for the area light.
-    Upper bound is necessary because we don't want to under-assign to clusters
-    during light culling since that would cause visual artefacts.
-    */
-
     // TODO: Maybe instead of using 3D AABB surface area as upper bound for polygon area,
     // find the polygons plane with the first 3 points (since n >= 3) then project onto 2D
     // and use the 2D AABB (could be a tighter upper bound but more costly cpu side which might be bad)
@@ -180,15 +173,6 @@ polygon_area_aabb_upper_bound(AreaLight* al)
 float
 calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable)
 {
-    float r = al->color_rgb_intensity_a[0];
-    float b = al->color_rgb_intensity_a[1];
-    float g = al->color_rgb_intensity_a[2];
-    float intensity = al->color_rgb_intensity_a[3];
-    float flux = ((r + b + g) / 3.0f) * intensity * area;
-
-    // Inverse square law with hemispherical falloff adjustment
-    return sqrtf(flux / (2.0f * M_PI * min_perceivable)) * (al->is_double_sided ? 1.0f : 2.0f);
-
     /* Math notes:
     For sphere E = flux/(4*pi*r^2) for distance r from a point light
     For an area light the emission is hemispherical: E= flux / (2*pi*r^2)
@@ -200,4 +184,16 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
     r^2 = flux/(2 * pi * min_perceivable)
     r = sqrt(...)
     */
+    float r = al->color_rgb_intensity_a[0];
+    float b = al->color_rgb_intensity_a[1];
+    float g = al->color_rgb_intensity_a[2];
+    float intensity = al->color_rgb_intensity_a[3];
+    float luminance = 0.2126f * r + 0.7152f * g + 0.0722f * b;
+    float flux = luminance * intensity * area;
+    // float flux = ((r + b + g) / 3.0f) * intensity * area;
+
+    if (al->is_double_sided) flux *= 2.0f;
+
+    // Inverse square law with hemispherical falloff adjustment
+    return 2.0f* sqrtf(flux / (2.0f * M_PI * min_perceivable));
 }

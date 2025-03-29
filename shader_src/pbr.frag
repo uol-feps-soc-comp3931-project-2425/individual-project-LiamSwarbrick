@@ -86,6 +86,7 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
         uint area_count;
         uint point_indices[CLUSTER_MAX_LIGHTS/2];
         uint area_indices[CLUSTER_MAX_LIGHTS/2];
+        uint area_light_flags[CLUSTER_MAX_LIGHTS/2];  // 0b00 = neither, 0b01 = diffuse, 0b10 = specular, 0b11 = both
     };
 
     layout (std430, binding = 1) restrict buffer cluster_ssbo
@@ -107,7 +108,7 @@ layout (location = 16) uniform int is_alpha_blending_enabled;
     layout (location = 21) uniform uint num_area_lights;
 #endif  // ENABLE_CLUSTERED_SHADING
 
-#define COUNT_LIGHT_OPS
+// #define COUNT_LIGHT_OPS
 layout (binding = 0, offset = 0) uniform atomic_uint light_ops_atomic_counter_buffer;
 
 #define M_PI 3.1415926535897932384626433832795
@@ -451,15 +452,15 @@ main()
     }
 
     // Area Lights
-#ifdef ENABLE_CLUSTERED_SHADING
-    #pragma unroll(CLUSTER_MAX_LIGHTS/2)
+    #ifdef ENABLE_CLUSTERED_SHADING
+    // #pragma unroll(CLUSTER_MAX_LIGHTS/2)
     for (int i = 0; i < num_area_lights; ++i)
     {
         uint light_index = clusters[tile_index].area_indices[i];
-#else
+    #else
     for (int light_index = 0; light_index < num_area_lights; ++light_index)
     {
-#endif  // ENABLE_CLUSTERED_SHADING
+    #endif  // ENABLE_CLUSTERED_SHADING
         AreaLight al = area_lights[light_index];
 
         float dot_NV = clamp(dot(N, V), 0.0, 1.0);
@@ -476,30 +477,45 @@ main()
         );
 
         // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
-        // if (al.n == 3) sum_arealight_radiance += vec3(10.0);
-        vec3 diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
-        vec3 specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, al.n, al.is_double_sided == 1);
+        
+        vec3 diffuse = vec3(0.0);
+        vec3 specular = vec3(0.0);
 
-        // GGX BRDF shadowing and Fresnel
-        // t2.x: shadowedF90 (F90 normally should be 1.0)
-        // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
-        vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
-        specular *= F0 * t2.x + (1.0 - F0) * t2.y;
-        // specular = vec3(0.00);
-        // diffuse = vec3(0.00);
+        #ifdef ENABLE_CLUSTERED_SHADING
+        uint flags = clusters[tile_index].area_light_flags[i];
+        if ((flags & 0x1u) != 0u)  // Diffuse flag set
+        #endif
+        {
+            diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
+        }
+
+        #ifdef ENABLE_CLUSTERED_SHADING
+        if ((flags & 0x2u) != 0u)  // Specular flag set
+        #endif
+        {
+            specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, al.n, al.is_double_sided == 1);
+
+            // GGX BRDF shadowing and Fresnel
+            // t2.x: shadowedF90 (F90 normally should be 1.0)
+            // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
+            vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
+            specular *= F0 * t2.x + (1.0 - F0) * t2.y;
+        }
+
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
-#ifdef COUNT_LIGHT_OPS
+
+        #ifdef COUNT_LIGHT_OPS
         atomicCounterIncrement(light_ops_atomic_counter_buffer);
-#endif  // COUNT_LIGHT_OPS
+        #endif  // COUNT_LIGHT_OPS
     }
 
     // Add ambient light
-    vec3 ambient_color = vec3(0.00);
+    vec3 ambient_color = vec3(0.01);
     vec3 ambient = occlusion * ambient_color * base_color.rgb;
 
     // Get final color in linear space
     vec3 final_linear_color =
-        // sun_radiance +
+        sun_radiance +
         sum_pl_radiance +
         sum_arealight_radiance +
         emissive + ambient;
@@ -535,6 +551,7 @@ main()
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);
     frag_color = vec4(col, alpha);
     // frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
+
 #else
     // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
     frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);

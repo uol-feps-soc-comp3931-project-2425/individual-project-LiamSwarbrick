@@ -27,6 +27,7 @@ struct Cluster
     uint area_count;
     uint point_indices[CLUSTER_MAX_LIGHTS/2];
     uint area_indices[CLUSTER_MAX_LIGHTS/2];
+    uint area_light_flags[CLUSTER_MAX_LIGHTS/2];  // 0b00 = neither, 0b01 = diffuse, 0b10 = specular, 0b11 = both
 };
 
 layout (std430, binding = 1) restrict buffer cluster_ssbo
@@ -91,4 +92,12 @@ main()
     
     clusters[tile_index].min_point = vec4(min(min_point_near, min_point_far), 0.0);
     clusters[tile_index].max_point = vec4(max(max_point_near, max_point_far), 0.0);
+
+    // Reinitialize counters to 0 before computing this frames cluster
+    clusters[tile_index].point_count = 0;
+    clusters[tile_index].area_count = 0;
+    for (uint i = 0; i < CLUSTER_MAX_LIGHTS/2; ++i)
+    {
+        clusters[tile_index].area_light_flags[i] = 0u;
+    }
 }

@@ -35,6 +35,7 @@ struct Cluster
     uint area_count;
     uint point_indices[CLUSTER_MAX_LIGHTS/2];
     uint area_indices[CLUSTER_MAX_LIGHTS/2];
+    uint area_light_flags[CLUSTER_MAX_LIGHTS/2];  // 0b00 = neither, 0b01 = diffuse, 0b10 = specular, 0b11 = both
 };
 
 layout (std430, binding = 0) restrict buffer point_light_ssbo
@@ -135,7 +136,7 @@ is_aabb_fully_behind_plane(vec3 aabb_min, vec3 aabb_max, vec3 plane_normal, floa
     return signed_distance < 0;
 }
 
-bool
+uint
 test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 {
     // Half space rejection for single sided area lights
@@ -150,7 +151,7 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 
         if (is_aabb_fully_behind_plane(cluster.min_point.xyz, cluster.max_point.xyz, plane_normal, plane_constant))
         {
-            return false;
+            return 0u;
         }
     }
 
@@ -166,6 +167,7 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     // }
 
 // SPECULAR:
+    bool specular_passed = false;
     vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
 
 #if CLUSTER_NORMALS_COUNT == 1  // Normal based clustering disabled
@@ -182,9 +184,11 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     //     return true;
     // }
 #else
-    float param_roughness = 1.0;
-    float param_min_intensity = 0.01;
-    float param_intensity_saturation = 0.5;
+    float param_roughness             = 1.0;
+    float param_min_intensity         = 0.01;
+    float param_intensity_saturation  = 10.0;//= 0.5;//=100.0;
+    // NOTE: Can set intensity saturation to like 50.0 or 100.0 in scenes mostly composed of rough materials
+    // In scenes almost entirely shiny then setting to 1.0 or 0.5 may be necessary to avoid obvious cutting off of specular.
 
     vec3 light_sphere_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
     float light_sphere_radius = area_lights[i].sphere_of_influence_center_xyz_radius_w.w;
@@ -220,37 +224,28 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 
         max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
         max_dot = max(max_dot, max_N_dot_H);
-        if (max_dot > specular_tau) break;
+        if (max_dot > specular_tau) break;  // Early exit
+    }
 
-        // if (max_N_dot_H >= max_dot)
-        // {
-        //     max_dot = max_N_dot_H;
-        //     if (max_dot > specular_tau) break; // Early exit
-        // }
-    }
-    if (max_dot > specular_tau)
-    {
-        return true;
-    }
+    specular_passed = max_dot > specular_tau;
 #endif
 
 
 // DIFFUSE:
-
-    // Early reject if not inside AABB of light diffuse emission
-    if (!aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz,
-            cluster.min_point.xyz, cluster.max_point.xyz))
-    {
-        return false;
-    }
     
-    // More precise sphere test:
-    if (sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz))
+    bool diffuse_passed = false;
+    // Early reject if not inside AABB of light diffuse emission
+    if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
     {
-        return true;
+        // Tight bounding sphere test:
+        diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
     }
 
-    return false;
+    uint result = 0u;
+    if (diffuse_passed)  result |= 0x1u;
+    if (specular_passed) result |= 0x2u;
+    
+    return result;
 }
 
 void
@@ -290,9 +285,9 @@ main()
     normal_cone.sin_threshold = sin(normal_cone.half_angle);
     normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];
 
-    // Reinitialize counters to 0 before computing this frames cluster
-    cluster.point_count = 0;
-    cluster.area_count = 0;
+    // // Reinitialize counters to 0 before computing this frames cluster
+    // cluster.point_count = 0;
+    // cluster.area_count = 0;
 
     const uint max_point_lights = CLUSTER_MAX_LIGHTS/2;
     const uint max_area_lights = CLUSTER_MAX_LIGHTS/2;
@@ -307,9 +302,12 @@ main()
 
     for (uint i = 0; i < num_area_lights; ++i)
     {
-        if (test_arealight(i, cluster, normal_cone) && cluster.area_count < max_area_lights)
+        uint contribution_flags = test_arealight(i, cluster, normal_cone);
+        if (contribution_flags != 0u && cluster.area_count < max_area_lights)
         {
-            cluster.area_indices[cluster.area_count++] = i;
+            cluster.area_indices[cluster.area_count] = i;
+            cluster.area_light_flags[cluster.area_count] = contribution_flags;
+            ++cluster.area_count;
         }
     }
 

@@ -170,9 +170,10 @@ typedef struct  ClusterMetaData
     u32 area_count;
     f32 _padding[2];
     
-    // light indices size can be changed at runtime so isn't stored here
-    // u32 light_indices[CLUSTER_MAX_LIGHTS/2];
-    // u32 area_indices[CLUSTER_MAX_LIGHTS/2]
+    // The Cluster data on the GPU also stores
+    // - u32 light_indices[CLUSTER_MAX_LIGHTS/2]
+    // - u32 area_indices[CLUSTER_MAX_LIGHTS/2]
+    // - u32 area_light_flags[CLUSTER_MAX_LIGHTS/2]
 }
 ClusterMetaData;
 
@@ -831,7 +832,9 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
     {
         glDeleteBuffers(1, &program.cluster_grid_ssbo);
     }
-    u32 cluster_size = sizeof(ClusterMetaData) + sizeof(u32) * program.max_lights_per_cluster;
+    u32 cluster_size = sizeof(ClusterMetaData)  // header
+        + sizeof(u32) * program.max_lights_per_cluster  // point lights & area light ids
+        + sizeof(u32) * program.max_lights_per_cluster / 2;  // area light flags
     glCreateBuffers(1, &program.cluster_grid_ssbo);
     glNamedBufferData(program.cluster_grid_ssbo, cluster_size * NUM_CLUSTERS, NULL, GL_STATIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
@@ -1567,7 +1570,7 @@ draw_gltf_scene(Scene* scene)
                     }
                 }
 
-                float area = polygon_area_aabb_upper_bound(area_light);
+                float area = polygon_area(area_light);
                 float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity);
                 
                 sphere_of_influence[0] = centroid[0];
@@ -1914,6 +1917,136 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         // al = make_area_light((vec3){5.270933,-4.543071,-53.789848}, (vec3){-0.694041,-0.684534,0.222981}, 0, 3, 0.2f, 1.0f, 1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
         al = make_area_light((vec3){5.410935,-2.272083,-48.796303}, (vec3){0.749683,-0.656189,-0.085968}, 0, 4, 0.5f, 25.0f, 2.0f, 3.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
         al = make_area_light((vec3){-2.931523,3.543194,-46.665058}, (vec3){-0.569861,0.701331,0.428245}, 0, 3, 0.6f , 20.0f, 2.0f, 3.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        
+        const int many_light_suntemple_test = 1;
+        if (many_light_suntemple_test)
+        {
+
+            // Hallway:
+            al = make_area_light((vec3){-3.227366,-1.989864,-84.067825}, (vec3){0.967123,-0.254281,-0.003849}, 0, 3,  0.8f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){3.632351,-1.989864,-84.619041}, (vec3){-0.964972,-0.256029,0.057253}, 0, 3,   0.7f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-0.171629,-4.844074,-84.749199}, (vec3){-0.009824,-0.981175,-0.192872}, 0, 4, 0.6f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){2.027821,2.714062,-76.314697}, (vec3){-0.252817,0.966831,-0.036355}, 0, 3,    0.5f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-2.644127,2.714062,-76.601562}, (vec3){0.545110,0.838352,0.004645}, 0, 3,     0.4f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-2.806165,0.988074,-67.750755}, (vec3){0.187510,0.981744,-0.031910}, 0, 3,    0.3f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){3.680951,0.330242,-67.938171}, (vec3){-0.041557,0.984393,-0.171007}, 0, 3,    0.2f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-0.045660,-3.448810,-57.920753}, (vec3){-0.016721,0.048483,0.998684}, 0, 5,   0.1f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+
+            // Outside lights scattered everywhere (Randomised each scene run)
+            al = make_area_light((vec3){-41.404716,-25.552601,17.230299}, (vec3){0.670347,0.612648,-0.418685}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-41.598038,-27.990410,11.597915}, (vec3){0.777166,0.048277,0.627441}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-50.342281,-27.585949,8.561733}, (vec3){0.019471,0.998736,0.046332}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-51.234867,-29.861887,18.782742}, (vec3){0.928283,0.356914,0.104418}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-53.507530,-44.498020,58.075027}, (vec3){0.499710,0.322956,-0.803734}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-52.430721,-45.030994,57.389839}, (vec3){0.153695,0.987882,-0.021588}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-54.763268,-44.544991,56.614269}, (vec3){0.361426,-0.880400,0.307031}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-54.953632,-37.441334,48.620686}, (vec3){0.361426,-0.880400,0.307031}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-55.503185,-36.335697,41.867279}, (vec3){0.361426,-0.880400,0.307031}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-51.921284,-36.335697,28.906906}, (vec3){0.361426,-0.880400,0.307031}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-63.970303,-44.956726,44.704014}, (vec3){0.978384,-0.140130,0.152077}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-64.882462,-40.227318,41.867706}, (vec3){0.421297,-0.123609,0.898460}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-74.266083,-43.140652,46.926392}, (vec3){0.968323,0.226859,0.104330}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-77.892746,-48.945065,58.133301}, (vec3){0.318402,0.794231,-0.517511}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-68.617020,-49.728664,59.688347}, (vec3){-0.586223,0.325584,-0.741847}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-91.659973,-48.027626,53.720020}, (vec3){0.828976,0.343906,0.441052}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-91.013626,-50.113625,61.160892}, (vec3){0.380150,0.666013,-0.641804}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-115.872803,-50.236839,56.625710}, (vec3){0.925079,0.333452,0.181764}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-124.512474,-47.042686,45.250530}, (vec3){0.186070,-0.076629,0.979544}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-123.844398,-47.042686,46.252995}, (vec3){-0.881693,-0.270513,0.386574}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-121.467407,-45.102448,39.137939}, (vec3){-0.350158,-0.265161,0.898376}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-129.815063,-44.587189,32.666492}, (vec3){0.594137,0.530684,0.604463}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-147.094437,-49.733555,30.416332}, (vec3){0.633680,0.387848,0.669346}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-136.609558,-44.788708,20.543320}, (vec3){-0.257390,-0.054455,0.964772}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-134.357697,-40.817795,14.959087}, (vec3){-0.592420,0.328209,0.735742}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-139.663559,-43.068546,-4.898956}, (vec3){0.279816,0.293892,0.913964}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-123.765114,-40.580875,24.967489}, (vec3){-0.738921,-0.240975,0.629227}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-117.609238,-37.215092,17.910633}, (vec3){-0.724030,-0.129120,0.677576}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-121.502281,-37.044014,12.239734}, (vec3){0.146567,0.312421,0.938569}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-116.024429,-35.898224,-0.170543}, (vec3){-0.496506,0.042727,0.866981}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-119.912888,-36.892391,-9.434753}, (vec3){-0.496506,0.042727,0.866981}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-108.710068,-35.095856,-10.361274}, (vec3){-0.955483,0.014962,0.294668}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-105.453140,-33.860622,-17.034023}, (vec3){-0.584489,0.076000,0.807834}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-89.299095,-31.435440,-20.530695}, (vec3){-0.999905,0.003852,0.013205}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-99.753113,-37.886646,-34.394264}, (vec3){0.171315,0.614841,0.769819}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-109.918716,-48.349567,-52.797836}, (vec3){0.258626,0.565528,0.783128}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-121.800095,-52.427113,-72.535889}, (vec3){-0.873349,0.202443,0.443033}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-87.665199,-53.174778,-84.283195}, (vec3){-0.873349,0.202443,0.443033}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-73.277298,-50.021652,-80.138359}, (vec3){-0.814451,-0.222060,-0.536059}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-74.951820,-50.589027,-82.566246}, (vec3){0.000000,-1.000000,-0.000000}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-77.535347,-50.589027,-82.646431}, (vec3){0.000000,-1.000000,-0.000000}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-80.208626,-50.589027,-82.729408}, (vec3){0.000000,-1.000000,-0.000000}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-74.232101,-52.642143,-92.619057}, (vec3){-0.544786,0.438747,0.714639}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-63.718197,-52.020119,-94.820786}, (vec3){-0.544786,0.438747,0.714639}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-57.362141,-54.733738,-101.029610}, (vec3){-0.908484,0.023646,-0.417249}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-41.126953,-52.315620,-88.547020}, (vec3){-0.274505,-0.367530,-0.888577}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-36.311897,-54.062672,-94.662071}, (vec3){-0.974091,0.202787,-0.100117}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-40.306095,-53.598690,-94.108971}, (vec3){0.793583,-0.103942,-0.599518}, 0, 5, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-29.506622,-52.541500,-86.343254}, (vec3){-0.182172,0.092958,-0.978863}, 0, 5, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-25.625540,-49.230366,-78.060890}, (vec3){0.420022,-0.390663,-0.819124}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-23.223291,-49.230366,-82.361046}, (vec3){-0.576534,0.789356,-0.211012}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-9.100097,-49.230366,-78.123520}, (vec3){-0.766971,-0.092884,-0.634923}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-14.582089,-46.060249,-70.562126}, (vec3){0.062886,-0.413552,-0.908306}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-24.489586,-37.344414,-61.836494}, (vec3){0.062886,-0.413552,-0.908306}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-33.554474,-36.034813,-64.655312}, (vec3){0.935507,0.090192,-0.341603}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-44.741936,-36.034813,-72.549347}, (vec3){0.302939,0.291572,-0.907311}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-51.457577,-35.772980,-89.486351}, (vec3){0.048478,0.963939,-0.261672}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-51.382626,-48.358646,-94.509697}, (vec3){0.550858,-0.134278,-0.823726}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-42.035149,-70.414902,99.849632}, (vec3){-0.029137,-0.148028,0.988554}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-49.824089,-69.618454,92.720306}, (vec3){-0.029137,-0.148028,0.988554}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-36.277981,-60.869881,81.900368}, (vec3){-0.750044,-0.504782,0.427351}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-15.555871,-44.364609,79.801437}, (vec3){-0.750044,-0.504782,0.427351}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-17.998047,-43.508442,68.779533}, (vec3){0.063891,0.104015,0.992521}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-28.570158,-47.602360,61.886845}, (vec3){0.526379,0.561229,0.638707}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-42.590244,-51.895718,65.812889}, (vec3){0.910282,0.336401,-0.241290}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-37.854904,-44.462784,49.185081}, (vec3){0.172728,-0.315322,0.933133}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-23.791145,-35.443649,44.484119}, (vec3){-0.859327,-0.153520,0.487840}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-23.400446,-30.793144,37.432289}, (vec3){-0.492863,-0.229834,0.839203}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-5.402559,-15.679673,24.080116}, (vec3){-0.889034,0.278260,0.363579}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){16.224276,-12.121444,20.387159}, (vec3){-0.828434,0.259532,0.496327}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){12.629716,-15.518938,22.607395}, (vec3){0.518871,-0.004129,0.854843}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-5.673455,-8.984480,22.003946}, (vec3){0.586338,0.533334,0.609723}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-17.392838,-6.229719,2.450006}, (vec3){0.083971,0.931548,0.353789}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){4.489325,-41.582645,112.645683}, (vec3){-0.085994,0.246094,0.965424}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){11.501933,-46.273983,118.997795}, (vec3){0.219943,0.880268,-0.420421}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){27.651237,-46.866280,115.879921}, (vec3){-0.582277,0.662123,-0.471748}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){27.917965,-45.666214,108.834427}, (vec3){-0.842551,0.040304,0.537107}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){28.118212,-34.878872,96.436569}, (vec3){-0.093662,-0.307403,0.946959}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){20.931847,-29.828487,85.004135}, (vec3){0.276002,0.487967,0.828077}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){18.602524,-22.244993,64.756958}, (vec3){0.276002,0.487967,0.828077}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){18.344563,-16.119905,45.621910}, (vec3){-0.104704,0.842241,0.528836}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){30.754782,-18.738426,33.311623}, (vec3){-0.104704,0.842241,0.528836}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){44.837467,-13.928511,23.883783}, (vec3){-0.104704,0.842241,0.528836}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){56.784031,-24.554703,12.355318}, (vec3){-0.104704,0.842241,0.528836}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){52.494011,-32.426693,17.369560}, (vec3){-0.690923,0.079121,0.718586}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){69.370918,-32.426693,15.911938}, (vec3){-0.829483,0.248785,0.500064}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){90.823738,-31.857428,8.041292}, (vec3){-0.731694,0.310116,0.607002}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){81.647148,-28.968674,-1.389739}, (vec3){0.691057,-0.134278,0.710218}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){75.632599,-22.406855,-8.822274}, (vec3){0.669124,0.542700,0.507691}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){86.724869,-27.160694,-25.762806}, (vec3){0.669124,0.542700,0.507691}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){61.774349,-27.160694,-34.069202}, (vec3){0.983825,0.098488,-0.149626}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){57.951313,-24.885433,-25.119923}, (vec3){0.965701,0.104015,-0.237914}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){32.521744,-10.577869,-34.122124}, (vec3){0.995990,-0.087351,0.019308}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){31.535631,-9.852077,-22.141356}, (vec3){0.175816,0.668345,-0.722775}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){30.880028,-9.408706,14.336282}, (vec3){0.318680,0.601894,-0.732234}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){42.548466,-23.768517,37.807720}, (vec3){0.256693,0.617307,-0.743667}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){58.014439,-34.923145,42.301361}, (vec3){0.256693,0.617307,-0.743667}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){83.683815,-63.563744,57.287140}, (vec3){-0.248321,0.208225,-0.946033}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){72.104721,-62.213360,108.487885}, (vec3){0.717313,-0.227130,0.658691}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){67.646744,-62.213360,109.861580}, (vec3){0.141100,0.978963,-0.147385}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){66.857613,-58.062374,101.174675}, (vec3){0.902965,-0.380411,0.199856}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){70.080818,-58.062374,97.140526}, (vec3){0.093010,-0.478173,0.873327}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){62.713848,-48.955441,93.563789}, (vec3){0.964351,0.029200,0.263012}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){63.035854,-44.239906,85.374878}, (vec3){0.862959,-0.380411,0.332549}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){43.655537,-27.553997,72.776237}, (vec3){0.563387,-0.475732,0.675481}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){45.211021,-48.874180,108.515221}, (vec3){0.157785,0.806059,-0.570414}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){40.290253,-51.035942,117.824631}, (vec3){0.994590,0.031902,0.098859}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){14.771205,-42.061867,108.687393}, (vec3){0.440786,-0.131598,0.887913}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){33.586220,-26.384285,86.419037}, (vec3){0.060943,-0.208224,0.976181}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){40.337349,-21.205442,74.782631}, (vec3){0.499881,0.388105,0.774270}, 0, 3, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-32.767750,-24.896996,28.187532}, (vec3){-0.670935,-0.202787,0.713249}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-25.157635,-17.412888,15.889715}, (vec3){-0.474582,-0.219079,0.852512}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-26.575705,-3.489005,-23.941166}, (vec3){-0.196450,0.426158,0.883061}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+        }
     }
     if (scene_id == 3)
     {
@@ -1941,7 +2074,8 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->sun_color[0] = 1.0f;
         out_loaded_scene->sun_color[1] = 1.0f;
         out_loaded_scene->sun_color[2] = 1.0f;
-        out_loaded_scene->sun_intensity = 0.0f;  // Turn off sun
+        // out_loaded_scene->sun_intensity = 0.0f;  // Turn off sun
+        out_loaded_scene->sun_intensity = 0.1f;
         out_loaded_scene->sun_direction[0] = 1.0f;
         out_loaded_scene->sun_direction[1] = 1.0f;
         out_loaded_scene->sun_direction[2] = 1.0f;
