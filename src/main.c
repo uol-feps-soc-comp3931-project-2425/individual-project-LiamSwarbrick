@@ -812,6 +812,7 @@ typedef struct Program
 
     // Atomic buffers
     u32 light_ops_atomic_counter_buffer;
+    u32* light_ops_mapped_pointer;
     u32 last_light_ops_value;
 
     // Dynamically add/change point lights in scene here
@@ -996,8 +997,17 @@ init_global_renderer_buffers()
         glDeleteBuffers(1, &program.light_ops_atomic_counter_buffer);
     }
     glCreateBuffers(1, &program.light_ops_atomic_counter_buffer);
-    glNamedBufferData(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_DYNAMIC_DRAW);
+    // glNamedBufferData(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_DYNAMIC_DRAW);
+    glNamedBufferStorage(program.light_ops_atomic_counter_buffer, sizeof(u32), NULL, GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT | GL_DYNAMIC_STORAGE_BIT);
     glBindBufferBase(GL_ATOMIC_COUNTER_BUFFER, 0, program.light_ops_atomic_counter_buffer);
+    
+    // Persistantly map atomic counter buffer
+    program.light_ops_mapped_pointer = (u32*)glMapNamedBufferRange(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), GL_MAP_READ_BIT | GL_MAP_WRITE_BIT | GL_MAP_PERSISTENT_BIT | GL_MAP_COHERENT_BIT);
+    if (!program.light_ops_mapped_pointer)
+    {
+        printf("Failed to persistantly map atomic counter buffer\n");
+        exit(1);
+    }
 }
 
 void
@@ -1466,8 +1476,9 @@ draw_gltf_scene(Scene* scene)
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
 
     // Reset light op counter to 0
-    u32 zero = 0;
-    glNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &zero);
+    // u32 zero = 0;
+    // glNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &zero);
+    *program.light_ops_mapped_pointer = 0;
 
     u32 num_point_lights = array_length(&program.point_lights, sizeof(PointLight));
     u32 num_area_lights = array_length(&program.area_lights, sizeof(AreaLight));
@@ -1774,7 +1785,8 @@ draw_gltf_scene(Scene* scene)
     free_array(&transparent_draw_calls);
 
     // Check number of light ops
-    glGetNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &program.last_light_ops_value);
+    // glGetNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &program.last_light_ops_value);
+    program.last_light_ops_value = *program.light_ops_mapped_pointer;
 }
 
 void
@@ -3048,6 +3060,8 @@ main(int argc, char** argv)
 
         glfwSwapBuffers(program.window);
     }
+
+    // TODO: Prolly should clean up the buffers for no reason if I want to....
     
     nk_glfw3_shutdown(&program.gui_glfw);
     glfwDestroyWindow(program.window);
