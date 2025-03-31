@@ -755,6 +755,7 @@ typedef struct Program
     b32 is_minimized;
     f64 time;
     f32 dt;
+    u64 frame_counter;
     const char* driver_name;
 
     struct nk_glfw gui_glfw;
@@ -815,6 +816,10 @@ typedef struct Program
     u32 light_ops_atomic_counter_buffer;
     u32* light_ops_mapped_pointer;
     u32 last_light_ops_value;
+
+    // Time query objects
+    u32 compute_time_query;
+    u64 compute_time_last_frame;
 
     // Dynamically add/change point lights in scene here
     DynamicArray point_lights;
@@ -1665,6 +1670,19 @@ draw_gltf_scene(Scene* scene)
 
     if (enable_clustered_shading)
     {
+        // Ensure query has been used at least once before fetching compute time
+        if (program.compute_time_query && program.frame_counter > 0)
+        {
+            int available = 0;
+            glGetQueryObjectiv(program.compute_time_query, GL_QUERY_RESULT_AVAILABLE, &available);
+            if (available)
+            {
+                glGetQueryObjectui64v(program.compute_time_query, GL_QUERY_RESULT, &program.compute_time_last_frame);
+            }
+        }
+
+        glBeginQuery(GL_TIME_ELAPSED, program.compute_time_query);
+
         // TODO: Also implement froxel clusters for comparison?
 
         // Compute viewspace cluster AABBs with a compute shader
@@ -1704,6 +1722,8 @@ draw_gltf_scene(Scene* scene)
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         // glMemoryBarrier(GL_ALL_BARRIER_BITS);
         // glFinish();
+
+        glEndQuery(GL_TIME_ELAPSED);
     }
     
 
@@ -2759,6 +2779,7 @@ main(int argc, char** argv)
     program.w = 1280;
     program.h = 720;
     program.aspect_ratio = (f32)program.w / (f32)program.h;
+    program.frame_counter = 0;
     // program.is_hdr_enabled = 0;  // <- Removed because my laptop only supports r10g10b10a2 instead of rgba16 it so can't work on it rn.
     program.is_msaa_enabled = 0;
     program.is_minimized = 0;
@@ -2769,6 +2790,8 @@ main(int argc, char** argv)
     program.render_just_normals = 0;
 
     program.last_number_key = 4;
+
+    program.compute_time_last_frame = 0.0f;
 
     // Init GLFW, load OpenGL 4.6, and setup nuklear GUI library
     {
@@ -2855,6 +2878,7 @@ main(int argc, char** argv)
     }
 
     init_global_renderer_buffers();
+    glGenQueries(1, &program.compute_time_query);  // Make time query object
 
     // Compiler shaders
     {
@@ -2916,24 +2940,31 @@ main(int argc, char** argv)
             continue;
         }
 
-        // Display driver and framerate in window title
+        // Calculate average fps per half second
+        static double displayed_fps = 0.0f;
+        static double displayed_compute_time = 0.0f;
         {
-            // Calculate average fps per half second
-            static float displayed_fps = 0;
-
             static int num_frames = 0;
-            static float num_seconds = 0.0f;
+            static double num_seconds = 0.0f;
             num_frames++;
-            num_seconds += program.dt;
+            num_seconds += (double)program.dt;
+
+            static double compute_total = 0.0f;
+            compute_total += program.compute_time_last_frame / 1e6;
+
             if (num_seconds > 0.5f)
             {
-                displayed_fps = (float)num_frames / num_seconds;
+                displayed_fps = (double)num_frames / num_seconds;
+                displayed_compute_time = compute_total / (double)num_frames;
 
                 num_frames = 0;
                 num_seconds = 0.0f;
+                compute_total = 0.0f;
             }
+        }
 
-
+        // Display driver and framerate in window title
+        {
             char title[512] = { 0 };
             sprintf(title, "%s Hardware: %s FPS: %f (VSYNC) Light Ops: %d", window_title, program.driver_name, displayed_fps, program.last_light_ops_value);
             glfwSetWindowTitle(program.window, title);
@@ -2986,10 +3017,24 @@ main(int argc, char** argv)
             nk_glfw3_new_frame(&program.gui_glfw);
             
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
+            
+            // Display compute time query in top left:
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 50), NK_WINDOW_NO_SCROLLBAR))
+            {
+                char fps_str[64];
+                snprintf(fps_str, sizeof(fps_str), "%f fps", displayed_fps);
+                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_label(program.gui_context, fps_str, NK_TEXT_LEFT);
+
+                char time_str[64];
+                snprintf(time_str, sizeof(time_str), "Compute Time: %.2f ms", displayed_compute_time);
+                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_label(program.gui_context, time_str, NK_TEXT_LEFT);
+            }
+            nk_end(program.gui_context);
 
             if (nk_begin(program.gui_context, "Scene - Editor", nk_rect(0, program.h-120, program.w, 120), nk_flags))
             {
-                // Sun direction Editing
                 {
                     nk_layout_row_dynamic(program.gui_context, 0, 3);
 
@@ -3095,6 +3140,7 @@ main(int argc, char** argv)
         }
 
         glfwSwapBuffers(program.window);
+        program.frame_counter++;
     }
 
     // TODO: Prolly should clean up the buffers for no reason if I want to....

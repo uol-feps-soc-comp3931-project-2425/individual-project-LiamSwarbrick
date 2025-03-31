@@ -199,6 +199,7 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     // The only thing guarunteed to work is to assign specular to all clusters in the half space
     // specular_passed = true;
 
+// HEURISTIC 1:
     vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
     vec3 light_dir = normalize(light_center - cluster_center);
     vec3 H = normalize(view_dir + light_dir);
