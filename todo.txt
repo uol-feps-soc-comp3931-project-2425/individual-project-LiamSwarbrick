@@ -59,3 +59,17 @@ Can do writeup in order of implementation if the section headings make that simp
 // TODO: Maybe instead of using 3D AABB surface area as upper bound for polygon area,
     // find the polygons plane with the first 3 points (since n >= 3) then project onto 2D
     // and use the 2D AABB (could be a tighter upper bound but more costly cpu side which might be bad)
+
+
+
+
+
+
+
+
+
+== TASKS TODAY:
+- Profile the compute shader
+- Mirror the suntemple scene multiple times so that i can multiple to thousands of lights in the scene
+- Also duplicate the area lights algorthimically so they are in the same place relative to the copy.
+

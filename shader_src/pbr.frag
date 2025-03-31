@@ -280,6 +280,10 @@ Minv := The transformation from a clamped cosine to the linearly transformed cos
 vec3
 LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIPPED_NGON], int viewspace_points_n, bool double_sided)
 {
+    #ifdef COUNT_LIGHT_OPS
+    atomicCounterIncrement(light_ops_atomic_counter_buffer);
+    #endif  // COUNT_LIGHT_OPS
+    
     // Construct tangent space of orthonormal basis vectors x,y,z=T1,T2,N
     vec3 T1 = normalize(V - N * dot(V, N));
     vec3 T2 = cross(N, T1);
@@ -502,10 +506,6 @@ main()
         }
 
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
-
-        #ifdef COUNT_LIGHT_OPS
-        atomicCounterIncrement(light_ops_atomic_counter_buffer);
-        #endif  // COUNT_LIGHT_OPS
     }
 
     // Add ambient light
