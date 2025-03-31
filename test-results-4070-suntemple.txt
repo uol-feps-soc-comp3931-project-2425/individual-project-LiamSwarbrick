@@ -33,3 +33,4 @@ Future work:
 - This is because we need the normals for good specular, but the compute shader is slow right now.
 
 FUCK I DIDN'T COUNT DIFFUSE AND SPECULAR AS SEPERATE LIGHT OPS
+Also maybe play with compute batch size.
