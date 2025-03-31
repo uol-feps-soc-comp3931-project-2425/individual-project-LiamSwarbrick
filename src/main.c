@@ -3022,7 +3022,7 @@ main(int argc, char** argv)
             if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 50), NK_WINDOW_NO_SCROLLBAR))
             {
                 char fps_str[64];
-                snprintf(fps_str, sizeof(fps_str), "%f fps", displayed_fps);
+                snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
                 nk_layout_row_dynamic(program.gui_context, 20, 1);
                 nk_label(program.gui_context, fps_str, NK_TEXT_LEFT);
 
