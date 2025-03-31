@@ -158,7 +158,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 #define CLUSTER_GRID_SIZE_X 32//32//16 
 #define CLUSTER_GRID_SIZE_Y 32//32//9
 #define CLUSTER_GRID_SIZE_Z 16//32
-#define CLUSTER_NORMALS_COUNT 6//1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 100
 
@@ -1855,7 +1855,8 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     }
     else if (scene_id == 1)
     {
-        *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
+        // *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
+        *out_loaded_scene = load_gltf_scene("data/suntemple/mirroredsuntemple/mirroredsuntemple.gltf");
 
         num_point_lights = sizeof(suntemple_pointlight_positions) / sizeof(vec3);
         point_light_positions = suntemple_pointlight_positions;
@@ -2085,6 +2086,32 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
             al = make_area_light((vec3){-32.767750,-24.896996,28.187532}, (vec3){-0.670935,-0.202787,0.713249}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){-25.157635,-17.412888,15.889715}, (vec3){-0.474582,-0.219079,0.852512}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){-26.575705,-3.489005,-23.941166}, (vec3){-0.196450,0.426158,0.883061}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+
+            // Copy to mirrored suntemples (0,0,0) -> (250,0,0), (0, 0, 250), and (250, 0, 250)
+            int initial_num_arear_lights = (int)array_length(&program.area_lights, sizeof(AreaLight));
+            for (int mirror_z = 0; mirror_z < 4; ++mirror_z)
+            {
+                for (int mirror_x = 0; mirror_x < 4; ++mirror_x)
+                {
+                    if (mirror_z == 0 && mirror_x == 0)
+                    {
+                        continue;
+                    }
+
+                    for (int al_i = 0; al_i < initial_num_arear_lights; ++al_i)
+                    {
+                        AreaLight* ith_al = get_element(&program.area_lights, sizeof(AreaLight), al_i);
+                        memcpy(&al, ith_al, sizeof(AreaLight));
+
+                        mat4 transform = GLM_MAT4_IDENTITY_INIT;
+                        vec3 translation_vec = { 250.0f * mirror_x, 0.0f, -250.0f * mirror_z };
+                        glm_translate(transform, translation_vec);
+                        transform_area_light(&al, transform);
+
+                        push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+                    }
+                }
+            }
         }
     }
     if (scene_id == 3)
@@ -2133,9 +2160,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->sun_color[2] = 1.0f;
     }
 
-    // printf("TEMP: Deleting point lights for now\n");
-    // free_array(&program.point_lights);
-    // program.point_lights = create_array(1 * sizeof(PointLight));
+    printf("TEMP: Deleting point lights for now\n");
+    free_array(&program.point_lights);
+    program.point_lights = create_array(1 * sizeof(PointLight));
 
     init_global_renderer_buffers();
 }
@@ -2403,7 +2430,7 @@ update_free_camera(FreeCamera* cam)
             f32 speed = 5.0f;
             if (program.keydown_sprint)
             {
-                speed *= 5.0f;
+                speed *= 15.0f;
             }
 
             f32 pos_increment = speed * program.dt;
@@ -2640,6 +2667,12 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
             glm_vec3_copy((vec3){ -0.286521, -3.771567, -88.778755 }, program.cam.pos);
             program.cam.pitch = -0.067008f;
             program.cam.yaw = 3.043161f;
+        }
+        else if (key == GLFW_KEY_8)
+        {
+            glm_vec3_copy((vec3){ 320.440155, 219.672180, 197.722351 }, program.cam.pos);
+            program.cam.pitch = 0.726073;
+            program.cam.yaw = 6.271652;
         }
     }
 
@@ -2898,7 +2931,7 @@ main(int argc, char** argv)
     {
         // Init camera
         program.cam.near_plane = 0.1f;
-        program.cam.far_plane = 400.0f;
+        program.cam.far_plane = 1000.0f;
         program.cam.pos[0] = 0.0f;
         program.cam.pos[1] = 1.0f;
         program.cam.pos[2] = 0.0f;
@@ -3019,7 +3052,7 @@ main(int argc, char** argv)
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
             
             // Display compute time query in top left:
-            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 50), NK_WINDOW_NO_SCROLLBAR))
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 75), NK_WINDOW_NO_SCROLLBAR))
             {
                 char fps_str[64];
                 snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
@@ -3030,6 +3063,11 @@ main(int argc, char** argv)
                 snprintf(time_str, sizeof(time_str), "Compute Time: %.2f ms", displayed_compute_time);
                 nk_layout_row_dynamic(program.gui_context, 20, 1);
                 nk_label(program.gui_context, time_str, NK_TEXT_LEFT);
+
+                char grid_str[64];
+                snprintf(grid_str, sizeof(grid_str), "Cluster grid (%d,%d,%d, %d)", CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z, CLUSTER_NORMALS_COUNT);
+                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_label(program.gui_context, grid_str, NK_TEXT_LEFT);
             }
             nk_end(program.gui_context);
 

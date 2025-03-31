@@ -171,9 +171,16 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
     vec3 view_dir = normalize(-cluster_center);
 
+    // Suntemple:
     float param_roughness             = 1.0;
     float param_min_intensity         = 0.01;
     float param_intensity_saturation  = 10.0;//= 0.5;//=100.0;
+
+    // Flat test
+    // float param_roughness             = 1.0;
+    // float param_min_intensity         = 0.01;
+    // float param_intensity_saturation  = 0.5;//= 0.5;//=100.0;
+
     // NOTE: Can set intensity saturation to like 50.0 or 100.0 in scenes mostly composed of rough materials
     // In scenes almost entirely shiny then setting to 1.0 or 0.5 may be necessary to avoid obvious cutting off of specular.
 
@@ -188,28 +195,55 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 
 
 #if CLUSTER_NORMALS_COUNT == 1  // Normal based clustering disabled
-    // // This code doesn't work
-    // vec3 light_pos = sphere.xyz;
-    // vec3 light_to_cluster_dir = normalize(cluster_center - light_pos);
-    // vec3 view_dir = normalize(-cluster_center);  // cluster to camera direction
+    #define HEURISTIC_1
+    #define FORCE_SPECULAR_PEAK_TEST
+    // #define NUCLEAR_OVERASSIGN_SPECULAR
 
-    // const float specular_threshold = 0.5;  // 0.0 for completely shiny materials in scene
-    // specular_passed = dot(light_to_cluster_dir, view_dir) >= specular_threshold;
+    // Heuristic 1: View-light alignment test (conservative and bad around glossy surfaces but fast)
+    #ifdef HEURISTIC_1
+        vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
+        vec3 light_dir = normalize(light_center - cluster_center);
+        vec3 H = normalize(view_dir + light_dir);
+        float min_NdotH = sqrt(specular_tau);  // Convert intensity threshold to angular threshold
 
-    // The only thing guarunteed to work is to assign specular to all clusters in the half space
-    // specular_passed = true;
+        // Test if light could possible produce specular for any normal
+        specular_passed = dot(view_dir, H) > min_NdotH;
 
-// HEURISTIC 1:
-    vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
-    vec3 light_dir = normalize(light_center - cluster_center);
-    vec3 H = normalize(view_dir + light_dir);
-    float min_NdotH = sqrt(specular_tau);  // Convert intensity threshold to angular threshold
+        // Intensity falloff adjustment
+        specular_passed = specular_passed && (scaled_intensity > param_min_intensity);
+    #endif  // HEURISTIC_1
 
-    // Test if light could possible produce specular for any normal
-    specular_passed = dot(view_dir, H) > min_NdotH;
+    // Force specular peak test (will overassign but never underassign -> slow)
+    #ifdef FORCE_SPECULAR_PEAK_TEST
+        // Fake normal cone covering all possible normals
+        float fake_half_angle = M_PI / 2.0; // Cover entire hemisphere
+        float fake_cos_threshold = cos(fake_half_angle);
+        float fake_sin_threshold = sin(fake_half_angle);
+        vec3 fake_cluster_normal = view_dir; // Use view direction as pseudo-normal
+        
+        float max_dot = 0.0;
+        for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
+        {
+            vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
+            vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
+            vec3 H = normalize(view_dir + light_to_cluster_dir);
 
-    // Intensity falloff adjustment
-    specular_passed = specular_passed && (scaled_intensity > param_min_intensity);
+            float H_dot_C = dot(H, fake_cluster_normal);
+            float term = H_dot_C * fake_cos_threshold + fake_sin_threshold * sqrt(1.0 - H_dot_C * H_dot_C);
+            float max_N_dot_H = max(1.0, term);
+
+            max_dot = max(max_dot, max_N_dot_H);
+            if (max_dot > specular_tau) break;
+        }
+        
+        // Combine with heuristic result
+        specular_passed = specular_passed || (max_dot > specular_tau);
+    #endif  // FORCE_SPECULAR_PEAK_TEST
+
+    #ifdef NUCLEAR_OVERASSIGN_SPECULAR
+        // The only thing guarunteed to work is to assign specular to all clusters in the half space
+        specular_passed = true;
+    #endif  // NUCLEAR_OVERASSIGN_SPECULAR
 
 #else
     float max_dot = 0.0;
@@ -238,6 +272,8 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 
     specular_passed = max_dot > specular_tau;
 #endif
+
+
 
 
 // DIFFUSE:

@@ -504,7 +504,7 @@ main()
             vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
             specular *= F0 * t2.x + (1.0 - F0) * t2.y;
         }
-
+        
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
     }
 
@@ -544,7 +544,7 @@ main()
     // frag_color = vec4(rgb, alpha);
 
     float amount_red = float(num_point_lights/15.0);
-    float amount_blue = float(num_area_lights/5.0);
+    float amount_blue = float(num_area_lights/25.0);
     float amount_green = 0.2;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);

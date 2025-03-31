@@ -11,6 +11,8 @@ float param_min_intensity         = 0.01;
 float param_intensity_saturation  = 10.0;
 
 123 area lights in scene.
+
+OLD TABLE:
 NORMAL COUNT | LOCATION A ops | fps   | LOCATION B ops | fps   | comment on artefacts
            1 |       89114000 |  25.0 |      102373650 |  25.0 | None since specular must be assigned to all clusters
            6 |        8486997 |  37.5 |       12935652 |  37.5 | None after tuning correct parameters for scene
@@ -34,3 +36,29 @@ Future work:
 
 FUCK I DIDN'T COUNT DIFFUSE AND SPECULAR AS SEPERATE LIGHT OPS
 Also maybe play with compute batch size.
+
+
+=====================================================
+      NEW DATA:
+Location A: Inside temple middle room
+Location B: Inside temple back room
+Location C: Outside
+
+Area light count: 1968
+Far plane: 1000 units
+
+Nonglossy 1 is HEURISTIC_1, and glossy 1 is HEURISTIC_1+FORCED_SPECULAR_PEAK
+
+NORMAL COUNT | LOCATION A ops | compute time ms | fps   | LOCATION B ops | compute time ms | fps   | LOCATION C ops | compute time ms | fps | comment on artefacts
+ 
+ Nonglossy 1 |       13455813 |         14      |    44 |    23101000    |     14          | 40    |       35133210 |           14    | 27  | Noticable specular artefacts around shiny materials due to strange heuristic, could be tuned to be better but it's very fast right now so best for mostly-matte scenes.
+    glossy 1 |       15150923 |         19      |    35 |    24833934    |             20  |  33   |       36133146 |           24    | 24  | None after tuning correct parameters for scene (Crazy that this is the same as n6 but faster)
+           6 |       15150923 |     101         |     9 |    24833934    |             103 |    9  |       36133146 |            95   | 8.5 | None after tuning correct parameters for scene
+          24 |       15158089 |            385  |   2.5 |    24847826    |             391 |  2.5  |       36135981 |            366  | 2.5 | None after tuning correct parameters for scene
+          54 |       15154225 |            861  |     1 |    24842105    |             867 |     1 |       36138182 |            800  |   1 | None after tuning correct parameters for scene
+
+FORCED_SPECULAR_PEAK_TEST is a new one I made last, and it seems to be the best to use.
+- It only uses position normals so it much faster
+- There must be a but in my implementation of more normals maybe? idk
+
+

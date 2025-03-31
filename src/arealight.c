@@ -113,12 +113,10 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, f
 float
 polygon_area(AreaLight* al)
 {
-    // TODO: Maybe instead of using 3D AABB surface area as upper bound for polygon area,
-    // find the polygons plane with the first 3 points (since n >= 3) then project onto 2D
-    // and use the 2D AABB (could be a tighter upper bound but more costly cpu side which might be bad)
-
     if (al->n < 3) return 0.0f;
 
+#define USE_TIGHTER_AREA_BOUND  // This underassigns diffuse with glossy materials but is faster otherwise
+#ifdef USE_TIGHTER_AREA_BOUND
     // Find normal from first 3 points
     vec3 u, v, normal;
     glm_vec3_sub(al->points_worldspace[1], al->points_worldspace[0], u);
@@ -152,22 +150,24 @@ polygon_area(AreaLight* al)
         area += projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1];
     }
 
-    return fabsf(area) * 0.5f;
+    return fabsf(area) * 0.5f; // *1.5f;  // *1.5 for slight safety guard
+#else
 
-    // // Compute AABB of polygon
-    // vec3 min; glm_vec3_copy(al->points_worldspace[0], min);
-    // vec3 max; glm_vec3_copy(al->points_worldspace[0], max);
-    // for (int i = 1; i < al->n; ++i)
-    // {
-    //     glm_vec3_minv(min, al->points_worldspace[i], min);
-    //     glm_vec3_maxv(max, al->points_worldspace[i], max);
-    // }
+    // Compute AABB of polygon
+    vec3 min; glm_vec3_copy(al->points_worldspace[0], min);
+    vec3 max; glm_vec3_copy(al->points_worldspace[0], max);
+    for (int i = 1; i < al->n; ++i)
+    {
+        glm_vec3_minv(min, al->points_worldspace[i], min);
+        glm_vec3_maxv(max, al->points_worldspace[i], max);
+    }
 
-    // // Compute surface area of AABB which is an upper bound for the polygons area
-    // vec3 size;
-    // glm_vec3_sub(max, min, size);
+    // Compute surface area of AABB which is an upper bound for the polygons area
+    vec3 size;
+    glm_vec3_sub(max, min, size);
 
-    // return 2.0f * (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
+    return 2.0f * (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
+#endif
 }
 
 float
