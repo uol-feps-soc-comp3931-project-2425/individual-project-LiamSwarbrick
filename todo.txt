@@ -72,4 +72,4 @@ Can do writeup in order of implementation if the section headings make that simp
 - Profile the compute shader
 - Mirror the suntemple scene multiple times so that i can multiple to thousands of lights in the scene
 - Also duplicate the area lights algorthimically so they are in the same place relative to the copy.
-
+^Wow i actually did all that in 2 hours

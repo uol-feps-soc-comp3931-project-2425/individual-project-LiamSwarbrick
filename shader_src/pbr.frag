@@ -544,7 +544,7 @@ main()
     // frag_color = vec4(rgb, alpha);
 
     float amount_red = float(num_point_lights/15.0);
-    float amount_blue = float(num_area_lights/25.0);
+    float amount_blue = float(num_area_lights/10.0);
     float amount_green = 0.2;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);

@@ -160,7 +160,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 #define CLUSTER_GRID_SIZE_Z 16//32
 #define CLUSTER_NORMALS_COUNT 1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
-#define CLUSTER_DEFAULT_MAX_LIGHTS 100
+#define CLUSTER_DEFAULT_MAX_LIGHTS 300
 
 typedef struct  ClusterMetaData
 {  // Manually padded so size is same as the std430 glsl struct Cluster
@@ -775,6 +775,7 @@ typedef struct Program
     b32 keydown_down;
     b32 keydown_sprint;
     b32 keydown_zoom_in;
+    b32 keytoggle_disable_gui;
     b32 mouse_capture_on;
     f64 mouse_relative_x;
     f64 mouse_relative_y;
@@ -1938,6 +1939,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     free_array(&program.area_lights);
     program.area_lights = create_array(1 * sizeof(AreaLight));
 
+    // Seed RNG so they spawn the same way
+    srand(12345);
+
     // Fill point lights array with initial point lights
     PointLight* lights = push_size(&program.point_lights, sizeof(PointLight), num_point_lights);
     for (u32 i = 0; i < num_point_lights; ++i)
@@ -1961,7 +1965,6 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         const int many_light_suntemple_test = 1;
         if (many_light_suntemple_test)
         {
-
             // Hallway:
             al = make_area_light((vec3){-3.227366,-1.989864,-84.067825}, (vec3){0.967123,-0.254281,-0.003849}, 0, 3,  0.8f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){3.632351,-1.989864,-84.619041}, (vec3){-0.964972,-0.256029,0.057253}, 0, 3,   0.7f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
@@ -1971,7 +1974,11 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
             al = make_area_light((vec3){-2.806165,0.988074,-67.750755}, (vec3){0.187510,0.981744,-0.031910}, 0, 3,    0.3f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){3.680951,0.330242,-67.938171}, (vec3){-0.041557,0.984393,-0.171007}, 0, 3,    0.2f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){-0.045660,-3.448810,-57.920753}, (vec3){-0.016721,0.048483,0.998684}, 0, 5,   0.1f, 5.0f, 2.0f, 2.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-
+            // New ones:
+            al = make_area_light((vec3){1.864715,0.563292,-39.060966}, (vec3){0.433046,-0.067180,-0.898865}, 0, 5, -0.3f, 8.0f, 1.0f, 1.5f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){4.539085,1.353073,-9.784513}, (vec3){0.477520,0.076000,0.875328}, 0, 4, -1.0f, 20.0f, 1.0f, 3.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            al = make_area_light((vec3){-5.330230,9.963239,-6.978376}, (vec3){-0.250825,-0.037807,0.967294}, 0, 4, -1.0f, 20.0f, 4.0f, 1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+            
             // Outside lights scattered everywhere (Randomised each scene run)
             al = make_area_light((vec3){-41.404716,-25.552601,17.230299}, (vec3){0.670347,0.612648,-0.418685}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){-41.598038,-27.990410,11.597915}, (vec3){0.777166,0.048277,0.627441}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
@@ -2089,6 +2096,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
 
             // Copy to mirrored suntemples (0,0,0) -> (250,0,0), (0, 0, 250), and (250, 0, 250)
             int initial_num_arear_lights = (int)array_length(&program.area_lights, sizeof(AreaLight));
+            int initial_num_point_lights = (int)array_length(&program.point_lights, sizeof(PointLight));
             for (int mirror_z = 0; mirror_z < 4; ++mirror_z)
             {
                 for (int mirror_x = 0; mirror_x < 4; ++mirror_x)
@@ -2109,6 +2117,19 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
                         transform_area_light(&al, transform);
 
                         push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
+                    }
+
+                    // Point lights too for fun
+                    PointLight pl;
+                    for (int pl_i = 0; pl_i < initial_num_point_lights; ++pl_i)
+                    {
+                        PointLight* ith_pl = get_element(&program.point_lights, sizeof(PointLight), pl_i);
+                        memcpy(&pl, ith_pl, sizeof(PointLight));
+
+                        vec3 translation_vec = { 250.0f * mirror_x, 0.0f, -250.0f * mirror_z };
+                        glm_vec3_add(pl.position, translation_vec, pl.position);                        
+                        
+                        push_element_copy(&program.point_lights, sizeof(PointLight), &pl);
                     }
                 }
             }
@@ -2160,9 +2181,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->sun_color[2] = 1.0f;
     }
 
-    printf("TEMP: Deleting point lights for now\n");
-    free_array(&program.point_lights);
-    program.point_lights = create_array(1 * sizeof(PointLight));
+    // printf("TEMP: Deleting point lights for now\n");
+    // free_array(&program.point_lights);
+    // program.point_lights = create_array(1 * sizeof(PointLight));
 
     init_global_renderer_buffers();
 }
@@ -2520,10 +2541,6 @@ reload_shaders(b32 only_reload_pbr_shaders)
         else base_header_text = header_b;
     }
 
-    char cluster_max_lights_string[100] = { 0 };
-    // itoa(program.max_lights_per_cluster, cluster_max_lights_string, 10);
-    sprintf(cluster_max_lights_string, "%d", program.max_lights_per_cluster);
-
     char light_ops_allow_char = ' ';
     if (!program.is_light_op_counting_enabled)
     {
@@ -2536,9 +2553,9 @@ reload_shaders(b32 only_reload_pbr_shaders)
             "\n#define CLUSTER_GRID_SIZE_Y " xstr(CLUSTER_GRID_SIZE_Y)
             "\n#define CLUSTER_GRID_SIZE_Z " xstr(CLUSTER_GRID_SIZE_Z)
             "\n#define CLUSTER_NORMALS_COUNT " xstr(CLUSTER_NORMALS_COUNT)
-            "\n#define CLUSTER_MAX_LIGHTS %s"
+            "\n#define CLUSTER_MAX_LIGHTS %d"
             "\n%c%c#define COUNT_LIGHT_OPS",
-        base_header_text, cluster_max_lights_string, light_ops_allow_char, light_ops_allow_char);
+        base_header_text, program.max_lights_per_cluster, light_ops_allow_char, light_ops_allow_char);
 
 
     // Compile
@@ -2595,8 +2612,9 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
      *      Ctrl   - Sprint
      *      C      - Zoom In
      *      F1     - Toggle wireframe mode
-     *      F2     - Toggle normals shaders
-     * 
+     *      F2     - Toggle cluster visualisation
+     *      B      - Toggle GUI for nicer screenshots
+     *      
      *      Enter     - Spawn area light
      *      Alt+Enter - Spawn point light
      */
@@ -2744,6 +2762,10 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
                 break;
             case GLFW_KEY_C:
                 program.keydown_zoom_in = 1;
+                break;
+            
+            case GLFW_KEY_B:
+                program.keytoggle_disable_gui = !program.keytoggle_disable_gui;
                 break;
         }
     }
@@ -2989,7 +3011,7 @@ main(int argc, char** argv)
             {
                 displayed_fps = (double)num_frames / num_seconds;
                 displayed_compute_time = compute_total / (double)num_frames;
-
+                displayed_compute_time = program.compute_time_last_frame / 1e6;
                 num_frames = 0;
                 num_seconds = 0.0f;
                 compute_total = 0.0f;
@@ -3046,6 +3068,7 @@ main(int argc, char** argv)
 
 #ifndef DISABLE_GUI
         // Create GUI
+        if (!program.keytoggle_disable_gui)
         {
             nk_glfw3_new_frame(&program.gui_glfw);
             
