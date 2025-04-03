@@ -160,6 +160,7 @@ pbr_metallic_roughness_brdf(vec4 base_color, float metallic, float roughness, ve
 }
 
 
+// OLD: Used to think clipping was necessary but it's accounted form with a second texture fetched form factor
 // The available area lights implementation only uses quadrilaterals and manually checks every edge case
 // Hence a general algorithm was needed to perform clipping for any n-gon => Sutherland-Hodgman algorithm
 /*
@@ -211,13 +212,12 @@ Why is Sutherland-Hodgman algorithm acceptable?
 vec3
 integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
 {
-    // atomicCounterIncrement(light_ops_atomic_counter_buffer);
-
     // Original code:
     // float x = acos(dot(point_i, point_j));
     // float cross_z = normalize(cross(point_i, point_j)).z;
     // return x * cross_z;
 
+    // standard acos can be made more numerically unstable with a custom polynomial for this use case, avoiding float artefacts
     float x = dot(point_i, point_j);
     float y = abs(x);
     float a = 0.8543985 + (0.4965155 + 0.0145206 * y) * y;
@@ -249,28 +249,6 @@ integrate_lambertian_hemisphere(vec3 points[MAX_NGON], int n)
     return vsum;
 }
 
-// float
-// integrate_edge_disk_sector_projection(vec3 point_i, vec3 point_j)
-// {
-//     // TODO: I recall somewhere that they may have used a cubic alternative to acos for better results
-//     float x = acos(dot(point_i, point_j));
-//     float cross_z = normalize(cross(point_i, point_j)).z;
-//     return x * cross_z;
-// }
-
-// float
-// integrate_lambertian_hemisphere(vec3 points[MAX_NGON], int n)
-// {
-//     // TODO: Consider unrolling this loop for quad, and clipped quad=pentagon
-//     float sum = integrate_edge_disk_sector_projection(points[n-1], points[0]);  // Start with the wrap around pair (n-1, 0)
-//     for (int i = 0; i < n-1; ++i)
-//     {
-//         sum += integrate_edge_disk_sector_projection(points[i], points[i+1]);
-//     }
-
-//     return sum;
-// }
-
 /*
 N := fragment normal vector
 V := fragment to camera vector
@@ -284,14 +262,13 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     atomicCounterIncrement(light_ops_atomic_counter_buffer);
     #endif  // COUNT_LIGHT_OPS
     
-    // Construct tangent space of orthonormal basis vectors x,y,z=T1,T2,N
+    // Construct tangent space around shading location of orthonormal basis vectors x,y,z=T1,T2,N
     vec3 T1 = normalize(V - N * dot(V, N));
     vec3 T2 = cross(N, T1);
 
-    // Move LTC domain change matrix into the tangent space.
-    Minv = Minv * transpose(mat3(T1, T2, N));
+    Minv = Minv * transpose(mat3(T1, T2, N));  // Move LTC domain change matrix into the tangent space.
     
-    // Is fragment behind polygon
+    // Early exit if fragment is behind polygon
     vec3 dir = viewspace_points[0].xyz - P;
     vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
     bool behind = dot(dir, light_normal) < 0.;
@@ -300,29 +277,17 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
         return vec3(0.0);
     }
 
-    // Move polygon into tangent space
+    
+    vec3 points_o[MAX_NGON];  // P_o in the paper
+
+    // Move polygon into tangent space (i.e. transform polygon into space where we apply clamped cosine)
     for (int i = 0; i < viewspace_points_n; ++i)  // If i only used quad area lights I could unroll this but I'm not
     {
-        viewspace_points[i].xyz = Minv * (viewspace_points[i].xyz - P);
+        viewspace_points[i].xyz = Minv * (viewspace_points[i].xyz - P);  // - P makes polygon relative to shading location
+        points_o[i] = normalize(viewspace_points[i].xyz);  // As mentioned, normalization technically means LTC are not linear
     }
 
-    vec3 points_o[MAX_NGON];  // P_o in the paper
-    int n;
-    // clip_polygon_to_hemisphere(viewspace_points, viewspace_points_n, points_o, n);
-    
-    // // Degenerate case: Very important as it stops away faces from having very negative values in double sided
-    // if (n < 3)
-    //     return vec3(0.0);
-    
-    // for (int i = 0; i < n; ++i)
-    //     points_o[i] = normalize(points_o[i]);
-    
-
-    // Uncomment this when commenting clipping code
-    for (int i = 0; i < viewspace_points_n; ++i)
-        points_o[i] = normalize(viewspace_points[i].xyz);
-    n = viewspace_points_n;
-
+    int n = viewspace_points_n;
     vec3 vsum = integrate_lambertian_hemisphere(points_o, n);
     float len = length(vsum);
     float z = vsum.z / len;
@@ -334,7 +299,7 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     vec2 uv = vec2(z * 0.5 + 0.5, len);  // Move from range [-1,1] to [0, 1]
     uv = uv * LUT_SCALE + LUT_BIAS;
 
-    // Fetch horizon clipping form factor
+    // Fetch horizon clipped norm of the transformed BRDF me thinks
     float scale = texture(LTC2_texture, uv).w;
 
     float sum = len * scale;
