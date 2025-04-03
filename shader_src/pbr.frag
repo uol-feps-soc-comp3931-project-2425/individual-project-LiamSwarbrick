@@ -28,13 +28,15 @@ layout (std430, binding = 0) restrict buffer point_light_ssbo
     PointLight point_lights[];
 };
 
+
+
 // TODO: Remove MAX_NGON since I'm not clipping in the old way anymore...
 //       Leaving note here for now so I can maybe mention this in writeup
-#define MAX_NGON 15  // NOTE: This is the max ngon size after clipping (which can introduce more vertices)
+// #define MAX_NGON 15  // NOTE: This is the max ngon size after clipping (which can introduce more vertices)
                      // A size of 15 can handle a worst case clipping of a 10-gon - derivation in my writeup.
                      // A decagon can produce a star shaped area light similar to the figure in the Heitz paper.
 // const int MAX_UNCLIPPED_NGON = (3 * MAX_NGON) / 2;
-#define MAX_UNCLIPPED_NGON 10
+// #define MAX_UNCLIPPED_NGON 10
 struct AreaLight
 {
     vec4 color_rgb_intensity_a;
@@ -237,9 +239,8 @@ integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
 }
 
 vec3
-integrate_lambertian_hemisphere(vec3 points[MAX_NGON], int n)
+integrate_lambertian_hemisphere(vec3 points[MAX_UNCLIPPED_NGON], int n)
 {
-    // TODO: Consider unrolling this loop for quad, and clipped quad=pentagon
     vec3 vsum = integrate_edge_sector_vec(points[n-1], points[0]);  // Start with the wrap around pair (n-1, 0)
     for (int i = 0; i < n-1; ++i)
     {
@@ -278,7 +279,7 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     }
 
     
-    vec3 points_o[MAX_NGON];  // P_o in the paper
+    vec3 points_o[MAX_UNCLIPPED_NGON];  // P_o in the paper
 
     // Move polygon into tangent space (i.e. transform polygon into space where we apply clamped cosine)
     for (int i = 0; i < viewspace_points_n; ++i)  // If i only used quad area lights I could unroll this but I'm not
@@ -479,7 +480,7 @@ main()
 
     // Get final color in linear space
     vec3 final_linear_color =
-        sun_radiance +
+        // sun_radiance +
         sum_pl_radiance +
         sum_arealight_radiance +
         emissive + ambient;
@@ -509,7 +510,7 @@ main()
     // frag_color = vec4(rgb, alpha);
 
     float amount_red = float(num_point_lights/15.0);
-    float amount_blue = float(num_area_lights/10.0);
+    float amount_blue = float(num_area_lights/5.0);
     float amount_green = 0.2;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);

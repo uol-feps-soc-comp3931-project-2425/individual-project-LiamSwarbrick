@@ -47,7 +47,7 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, f
     al.color_rgb_intensity_a[1] = rgb[1];
     al.color_rgb_intensity_a[2] = rgb[2];
     al.color_rgb_intensity_a[3] = intensity;// rng_rangef(3.0f, 10.0f);
-
+    
     al.n = n;
     al.is_double_sided = is_double_sided;
 
@@ -109,13 +109,14 @@ make_area_light(vec3 position, vec3 normal_vector, int is_double_sided, int n, f
     return al;
 }
 
+#if 1
 
 float
 polygon_area(AreaLight* al)
 {
     if (al->n < 3) return 0.0f;
 
-#define USE_TIGHTER_AREA_BOUND  // This underassigns diffuse with glossy materials but is faster otherwise
+// #define USE_TIGHTER_AREA_BOUND  // This underassigns diffuse with glossy materials but is faster otherwise
 #ifdef USE_TIGHTER_AREA_BOUND
     // Find normal from first 3 points
     vec3 u, v, normal;
@@ -150,7 +151,7 @@ polygon_area(AreaLight* al)
         area += projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1];
     }
 
-    return fabsf(area) * 0.5f; // *1.5f;  // *1.5 for slight safety guard
+    return fabsf(area) * (al->is_double_sided ? 1.0f : 0.5f);
 #else
 
     // Compute AABB of polygon
@@ -166,7 +167,8 @@ polygon_area(AreaLight* al)
     vec3 size;
     glm_vec3_sub(max, min, size);
 
-    return 2.0f * (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
+    float area = (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
+    return al->is_double_sided ? 2.0f * area : area;
 #endif
 }
 
@@ -197,3 +199,5 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
     // Inverse square law with hemispherical falloff adjustment
     return 2.0f* sqrtf(flux / (2.0f * M_PI * min_perceivable));
 }
+
+#endif

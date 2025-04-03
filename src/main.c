@@ -200,7 +200,7 @@ typedef struct Scene
     f32 sun_intensity;
     vec3 sun_color;
 
-    // Light attenuation parameters
+    // Point Light attenuation parameters
     float attenuation_constant;
     float attenuation_linear;
     float attenuation_quadratic;
@@ -209,6 +209,11 @@ typedef struct Scene
 #define ATTENUATION_LINEAR_DEFAULT    2.5f//0.9f
 #define ATTENUATION_QUADRATIC_DEFAULT 5.0f//4.0f
 #define MINIMUM_PERCEIVABLE_INTENSITY_DEFAULT 0.015f//0.05
+
+    // Area light clustered shading parameters
+    float param_roughness;
+    float param_min_intensity;
+    float param_intensity_saturation;
 }
 Scene;
 
@@ -1173,7 +1178,8 @@ build_gltf_primitive_draw_call(Scene* scene, cgltf_mesh* mesh,
     if (material->alpha_mode == cgltf_alpha_mode_mask)
     {
         alpha_cutoff = material->alpha_cutoff;
-        is_alpha_blending_enabled = 0;
+        // is_alpha_blending_enabled = 0;
+        is_alpha_blending_enabled = 1;  // TEMPORARY FIX: For early depth tests, masked objects go in transparent pass too
     }
     else if (material->alpha_mode == cgltf_alpha_mode_opaque)
     {
@@ -1715,6 +1721,9 @@ draw_gltf_scene(Scene* scene)
         // glProgramUniformMatrix4fv(light_assignment_shader, 0, 1, GL_FALSE, (f32*)camera->view_matrix);
         glProgramUniform1ui(light_assignment_shader, 1, num_point_lights);
         glProgramUniform1ui(light_assignment_shader, 2, num_area_lights);
+        glProgramUniform1f(light_assignment_shader, 3, scene->param_roughness);
+        glProgramUniform1f(light_assignment_shader, 4, scene->param_min_intensity);
+        glProgramUniform1f(light_assignment_shader, 5, scene->param_intensity_saturation);
 
         #define LIGHT_ASSIGNMENT_BATCH_SIZE 512//128
         const int dispatched_workgroups = NUM_CLUSTERS / LIGHT_ASSIGNMENT_BATCH_SIZE;
@@ -1794,7 +1803,7 @@ draw_gltf_scene(Scene* scene)
         execute_pbr_draw_call(shader_program, draw_call);
     }
     
-    // Transparent render pass
+    // Transparent render pass (includes alphamasked objects for now as well)
     u32 num_transparents = array_length(&transparent_draw_calls, sizeof(PBRDrawCall));
     // OLD: qsort won't work for suntemple due to seperate trees being stored in one primitive so they are in the same draw call, order independant method required
     // qsort(transparent_draw_calls.data_buffer, transparent_draw_calls.used_size / sizeof(PBRDrawCall), sizeof(PBRDrawCall), compare_draw_call_depths);
@@ -1853,6 +1862,11 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear    = 50.0f;//= 8.0f;
         out_loaded_scene->attenuation_quadratic = 80.0f;//= 10.0f;
+
+        // Sponza isn't very shiny
+        out_loaded_scene->param_roughness = 1.0f;
+        out_loaded_scene->param_min_intensity = 0.01f;
+        out_loaded_scene->param_intensity_saturation = 100.0f;
     }
     else if (scene_id == 1)
     {
@@ -1866,6 +1880,11 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_constant  = 1.0f;
         out_loaded_scene->attenuation_linear    = 30.0f;//14.0f;//= 8.0f;
         out_loaded_scene->attenuation_quadratic = 50.0f;//25.0f;//= 10.0f;
+
+        // Suntemple has some shinies but not like glossy
+        out_loaded_scene->param_roughness = 1.0f;
+        out_loaded_scene->param_min_intensity = 0.01f;
+        out_loaded_scene->param_intensity_saturation = 10.0f;
     }
     else if (scene_id == 2)
     {
@@ -1878,6 +1897,11 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear = 2.5f;
         out_loaded_scene->attenuation_quadratic = 5.0f;
+
+        // Lost empire is similar to suntemple roughness wise
+        out_loaded_scene->param_roughness = 1.0f;
+        out_loaded_scene->param_min_intensity = 0.01f;
+        out_loaded_scene->param_intensity_saturation = 10.0f;
     }
     else if (scene_id == 3)
     {
@@ -1920,6 +1944,11 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_constant = 1.0f;
         out_loaded_scene->attenuation_linear = 0.5f;
         out_loaded_scene->attenuation_quadratic = 0.2f;
+
+        // Flat test has very glossy aspects
+        out_loaded_scene->param_roughness = 0.2f;
+        out_loaded_scene->param_min_intensity = 0.01f;
+        out_loaded_scene->param_intensity_saturation = 0.5f;
 
         // Camera settings for reproducing exact test scene
         glm_vec3_copy((vec3){ -20.200048f, 16.906214f, -126.027779f }, program.cam.pos);
@@ -2554,8 +2583,9 @@ reload_shaders(b32 only_reload_pbr_shaders)
             "\n#define CLUSTER_GRID_SIZE_Z " xstr(CLUSTER_GRID_SIZE_Z)
             "\n#define CLUSTER_NORMALS_COUNT " xstr(CLUSTER_NORMALS_COUNT)
             "\n#define CLUSTER_MAX_LIGHTS %d"
-            "\n%c%c#define COUNT_LIGHT_OPS",
-        base_header_text, program.max_lights_per_cluster, light_ops_allow_char, light_ops_allow_char);
+            "\n%c%c#define COUNT_LIGHT_OPS"
+            "\n#define MAX_UNCLIPPED_NGON %d",
+        base_header_text, program.max_lights_per_cluster, light_ops_allow_char, light_ops_allow_char, MAX_UNCLIPPED_NGON);
 
 
     // Compile
@@ -2657,13 +2687,14 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
                 program.cam.view_matrix[2][2],
             };
             
-            AreaLight al = make_area_light(program.cam.pos, true_forward, 0, n, -1.0f, -1.0f, -1.0f, -1.0f);
+            int double_sided = 1;
+            AreaLight al = make_area_light(program.cam.pos, true_forward, double_sided, n, -1.0f, -1.0f, -1.0f, -1.0f);
             push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             
             // Output code snippet to regenerate the lights
-            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, 0, %d, -1.0f, -1.0f, -1.0f, -1.0f);",
+            printf("AreaLight al = make_area_light((vec3){%f,%f,%f}, (vec3){%f,%f,%f}, %d, %d, -1.0f, -1.0f, -1.0f, -1.0f);",
                 program.cam.pos[0],program.cam.pos[1],program.cam.pos[2],
-                true_forward[0],true_forward[1],true_forward[2], n);
+                true_forward[0],true_forward[1],true_forward[2], double_sided, n);
             printf("push_element_copy(&program.area_lights, sizeof(AreaLight), &al);\n");
         }
     }

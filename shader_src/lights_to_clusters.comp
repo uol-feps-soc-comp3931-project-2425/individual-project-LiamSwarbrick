@@ -11,7 +11,7 @@ struct PointLight
 };
 
 
-#define MAX_UNCLIPPED_NGON 10
+// #define MAX_UNCLIPPED_NGON 10
 struct AreaLight
 {
     vec4 color_rgb_intensity_a;
@@ -56,6 +56,9 @@ layout (std430, binding = 1) restrict buffer cluster_ssbo
 // layout (location = 0) uniform mat4 view_matrix;
 layout (location = 1) uniform uint num_point_lights;
 layout (location = 2) uniform uint num_area_lights;
+layout (location = 3) uniform float param_roughness;
+layout (location = 4) uniform float param_min_intensity;
+layout (location = 5) uniform float param_intensity_saturation;
 
 layout (binding = 7) uniform usamplerCube cluster_normals_cubemap;
 layout (binding = 8) uniform sampler1D representative_normals_texture;
@@ -92,14 +95,21 @@ test_sphere_aabb(uint i, Cluster cluster, NormalCone normal_cone)
     }
 
 #if CLUSTER_NORMALS_COUNT != 1
-// NOTE: Backface culling pointlights not working properly
-    // // Does light affect this cluster based on normal (Backface culling of lights)
+// // NOTE: Backface culling pointlights not working properly
     // vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
     // vec3 to_light = normalize(light_pos - cluster_center);
-    // if (dot(normal_cone.cluster_normal, to_light) < -normal_cone.cos_threshold)
-    // {
+    // float cos_omega = dot(normal_cone.cluster_normal, to_light);
+
+    // float cluster_radius = length(cluster.max_point.xyz - cluster.min_point.xyz) * 0.5;
+    // float light_dist = length(light_pos - cluster_center);
+    // float cos_delta = cluster_radius / light_dist;
+    // float delta = acos(clamp(cos_delta, -1.0, 1.0)); // Clamp for numerical stability
+
+    // float threshold = cos(3.14159265 * 0.5 + normal_cone.half_angle + delta);
+
+    // Cull the light if it's completely behind
+    // if (cos_omega < threshold)
     //     return false;
-    // }
 #endif
 
     return true;
@@ -172,9 +182,9 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     vec3 view_dir = normalize(-cluster_center);
 
     // Suntemple:
-    float param_roughness             = 1.0;
-    float param_min_intensity         = 0.01;
-    float param_intensity_saturation  = 10.0;//= 0.5;//=100.0;
+    // float param_roughness             = 1.0;
+    // float param_min_intensity         = 0.01;
+    // float param_intensity_saturation  = 10.0;//= 0.5;//=100.0;
 
     // Flat test
     // float param_roughness             = 1.0;
@@ -252,14 +262,6 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
         vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
         vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
         vec3 H = normalize(view_dir + light_to_cluster_dir);
-        max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
-    }
-
-    for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
-    {
-        vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
-        vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
-        vec3 H = normalize(view_dir + light_to_cluster_dir);
 
         float H_dot_C = dot(H, normal_cone.cluster_normal);
         float term = H_dot_C * normal_cone.cos_threshold + normal_cone.sin_threshold * sqrt(1.0 - H_dot_C * H_dot_C);
@@ -272,8 +274,6 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
 
     specular_passed = max_dot > specular_tau;
 #endif
-
-
 
 
 // DIFFUSE:
