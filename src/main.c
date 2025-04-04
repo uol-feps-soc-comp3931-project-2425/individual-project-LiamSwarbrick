@@ -1732,7 +1732,7 @@ draw_gltf_scene(Scene* scene)
         glProgramUniform1f(light_assignment_shader, 5, scene->param_intensity_saturation);
 
 #ifdef INTEGRATED_GPU
-        const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 128;
+        const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 512;
 #else
         const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 64;
 #endif
