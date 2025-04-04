@@ -155,12 +155,19 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-#define CLUSTER_GRID_SIZE_X 32//32//16 
-#define CLUSTER_GRID_SIZE_Y 32//32//9
-#define CLUSTER_GRID_SIZE_Z 16//32
+#define INTEGRATED_GPU
+#ifdef INTEGRATED_GPU
+    #define CLUSTER_GRID_SIZE_X 32//32//16 
+    #define CLUSTER_GRID_SIZE_Y 32//32//9
+    #define CLUSTER_GRID_SIZE_Z 16//32
+#else
+    #define CLUSTER_GRID_SIZE_X 16//24
+#define CLUSTER_GRID_SIZE_Y 9//16
+#define CLUSTER_GRID_SIZE_Z 12//16
+#endif  // INTEGRATED_GPU
 #define CLUSTER_NORMALS_COUNT 1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
-#define CLUSTER_DEFAULT_MAX_LIGHTS 300
+#define CLUSTER_DEFAULT_MAX_LIGHTS 200
 
 typedef struct  ClusterMetaData
 {  // Manually padded so size is same as the std430 glsl struct Cluster
@@ -805,12 +812,12 @@ typedef struct Program
     // Point light shader storage block (std430)
     u32 point_light_ssbo;
     u32 point_light_ssbo_max;
-    #define SSBO_DEFAULT_MAX_POINT_LIGHTS 1
+    #define SSBO_DEFAULT_MAX_POINT_LIGHTS 10000
 
     // Area light shader storage block (std430)
     u32 area_light_ssbo;
     u32 area_light_ssbo_max;
-    #define SSBO_DEFAULT_MAX_AREA_LIGHTS 1
+    #define SSBO_DEFAULT_MAX_AREA_LIGHTS 3000
 
     // Cluster grid SSBO
     u32 cluster_grid_ssbo;
@@ -1506,8 +1513,7 @@ draw_gltf_scene(Scene* scene)
     {
         // Resize point and area light SSBOs
 
-        // if (num_point_lights > scene->point_light_ssbo_max)
-        if (num_point_lights != program.point_light_ssbo_max)  // For verification purposes resize the ssbo every time the amount of lights changes
+        if (num_point_lights > program.point_light_ssbo_max)  // For verification purposes resize the ssbo every time the amount of lights changes
         {
             program.point_light_ssbo_max = max(1, num_point_lights);  // Increase buffer by increments of 50 point lights
             size_t new_size = sizeof(PointLight) * program.point_light_ssbo_max;
@@ -1520,7 +1526,7 @@ draw_gltf_scene(Scene* scene)
             // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_POINTLIGHTS, scene->point_light_ssbo);
         }
 
-        if (num_area_lights != program.area_light_ssbo_max)
+        if (num_area_lights > program.area_light_ssbo_max)
         {
             program.area_light_ssbo_max = max(1, num_area_lights);
             size_t new_size = sizeof(AreaLight) * program.area_light_ssbo_max;
@@ -1725,9 +1731,14 @@ draw_gltf_scene(Scene* scene)
         glProgramUniform1f(light_assignment_shader, 4, scene->param_min_intensity);
         glProgramUniform1f(light_assignment_shader, 5, scene->param_intensity_saturation);
 
-        #define LIGHT_ASSIGNMENT_BATCH_SIZE 512//128
-        const int dispatched_workgroups = NUM_CLUSTERS / LIGHT_ASSIGNMENT_BATCH_SIZE;
-        assert(NUM_CLUSTERS % LIGHT_ASSIGNMENT_BATCH_SIZE == 0);
+#ifdef INTEGRATED_GPU
+        const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 128;
+#else
+        const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 64;
+#endif
+        const int dispatched_workgroups = NUM_CLUSTERS / LIGHT_ASSIGNMENT_LOCAL_SIZE;
+        assert(NUM_CLUSTERS % LIGHT_ASSIGNMENT_LOCAL_SIZE == 0);
+
         glDispatchCompute(dispatched_workgroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
         // glMemoryBarrier(GL_ALL_BARRIER_BITS);
@@ -2576,16 +2587,23 @@ reload_shaders(b32 only_reload_pbr_shaders)
         light_ops_allow_char = '/';  // Stupid way to comment out #define COUNT_LIGHT_OPS
     }
 
-    char header_text[1024] = { 0 };
+    #ifdef INTEGRATED_GPU
+    char integrated_gpu_char = '/';
+    #else
+    char integrated_gpu_char = ' ';
+    #endif
+
+    char header_text[1024] = { 0 };  // For all shaders
     snprintf(header_text, sizeof(header_text),
             "%s\n#define CLUSTER_GRID_SIZE_X " xstr(CLUSTER_GRID_SIZE_X)
             "\n#define CLUSTER_GRID_SIZE_Y " xstr(CLUSTER_GRID_SIZE_Y)
             "\n#define CLUSTER_GRID_SIZE_Z " xstr(CLUSTER_GRID_SIZE_Z)
             "\n#define CLUSTER_NORMALS_COUNT " xstr(CLUSTER_NORMALS_COUNT)
             "\n#define CLUSTER_MAX_LIGHTS %d"
-            "\n%c%c#define COUNT_LIGHT_OPS"
-            "\n#define MAX_UNCLIPPED_NGON %d",
-        base_header_text, program.max_lights_per_cluster, light_ops_allow_char, light_ops_allow_char, MAX_UNCLIPPED_NGON);
+            "\n%c%c#define COUNT_LIGHT_OPS"  // Stupid way to comment out this line according to a boolean
+            "\n#define MAX_UNCLIPPED_NGON %d"
+            "\n%c%c#define INTEGRATED_GPU",
+        base_header_text, program.max_lights_per_cluster, light_ops_allow_char, light_ops_allow_char, MAX_UNCLIPPED_NGON, integrated_gpu_char, integrated_gpu_char);
 
 
     // Compile
@@ -2687,7 +2705,7 @@ key_callback(GLFWwindow* window, int key, int scancode, int action, int mods)
                 program.cam.view_matrix[2][2],
             };
             
-            int double_sided = 1;
+            int double_sided = 0;
             AreaLight al = make_area_light(program.cam.pos, true_forward, double_sided, n, -1.0f, -1.0f, -1.0f, -1.0f);
             push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             
@@ -3210,6 +3228,7 @@ main(int argc, char** argv)
                     if (nk_button_label(program.gui_context, "Submit (Recompile)"))
                     {
                         program.max_lights_per_cluster = input_number;
+                        init_empty_cluster_grid();
                         reload_shaders(0);
                     }
                 }
@@ -3233,6 +3252,7 @@ main(int argc, char** argv)
 
         glfwSwapBuffers(program.window);
         program.frame_counter++;
+        
     }
 
     // TODO: Prolly should clean up the buffers for no reason if I want to....

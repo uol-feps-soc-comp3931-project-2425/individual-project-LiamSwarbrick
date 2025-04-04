@@ -1,7 +1,11 @@
 #version 460 core
 
 // Different sizes yield similar performance results, Intel Iris likely prefers 512
-#define LOCAL_SIZE 512//128
+#ifdef INTEGRATED_GPU
+    #define LOCAL_SIZE 128
+#else
+    #define LOCAL_SIZE 64
+#endif
 layout (local_size_x = LOCAL_SIZE, local_size_y = 1, local_size_z = 1) in;
 
 struct PointLight
@@ -282,8 +286,9 @@ test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
     // Early reject if not inside AABB of light diffuse emission
     if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
     {
-        // Tight bounding sphere test:
-        diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        diffuse_passed = true;
+        // Tight bounding sphere test:  (Increases compute time but better overall performance)
+        // diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
     }
 
     uint result = 0u;
