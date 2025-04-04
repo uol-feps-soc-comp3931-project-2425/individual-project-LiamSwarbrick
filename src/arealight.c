@@ -151,7 +151,7 @@ polygon_area(AreaLight* al)
         area += projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1];
     }
 
-    return fabsf(area) * (al->is_double_sided ? 1.0f : 0.5f);
+    area = fabsf(area) * (al->is_double_sided ? 1.0f : 0.5f);
 #else
 
     // Compute AABB of polygon
@@ -168,12 +168,14 @@ polygon_area(AreaLight* al)
     glm_vec3_sub(max, min, size);
 
     float area = (size[0] * size[1] + size[1] * size[2] + size[2] * size[0]);
-    return al->is_double_sided ? 2.0f * area : area;
+    area =  al->is_double_sided ? 2.0f * area : area;
 #endif
+
+    return area;
 }
 
 float
-calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable)
+calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable, float param_roughness)
 {
     /* Math notes:
     For sphere E = flux/(4*pi*r^2) for distance r from a point light
@@ -191,7 +193,7 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
     float g = al->color_rgb_intensity_a[2];
     float intensity = al->color_rgb_intensity_a[3];
     float luminance = 0.2126f * r + 0.7152f * g + 0.0722f * b;
-    float flux = luminance * intensity * area;
+    float flux = luminance * intensity * area * (1.0f / (param_roughness*param_roughness));
     // float flux = ((r + b + g) / 3.0f) * intensity * area;
 
     if (al->is_double_sided) flux *= 2.0f;

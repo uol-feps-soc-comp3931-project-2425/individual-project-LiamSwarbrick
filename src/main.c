@@ -1607,7 +1607,7 @@ draw_gltf_scene(Scene* scene)
                 }
 
                 float area = polygon_area(area_light);
-                float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity);
+                float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity, scene->param_roughness);
                 
                 sphere_of_influence[0] = centroid[0];
                 sphere_of_influence[1] = centroid[1];
@@ -1957,7 +1957,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_quadratic = 0.2f;
 
         // Flat test has very glossy aspects
-        out_loaded_scene->param_roughness = 0.2f;
+        out_loaded_scene->param_roughness = 0.33f;
         out_loaded_scene->param_min_intensity = 0.01f;
         out_loaded_scene->param_intensity_saturation = 0.5f;
 
@@ -2588,9 +2588,9 @@ reload_shaders(b32 only_reload_pbr_shaders)
     }
 
     #ifdef INTEGRATED_GPU
-    char integrated_gpu_char = '/';
-    #else
     char integrated_gpu_char = ' ';
+    #else
+    char integrated_gpu_char = '/';
     #endif
 
     char header_text[1024] = { 0 };  // For all shaders
