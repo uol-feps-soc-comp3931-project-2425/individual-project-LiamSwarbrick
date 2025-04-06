@@ -510,13 +510,14 @@ main()
     // frag_color = vec4(rgb, alpha);
 
     float amount_red = float(num_point_lights/15.0);
-    float amount_blue = float(num_area_lights/6.0);
+    // float amount_red = float(num_area_lights);
+    float amount_blue = float(num_area_lights/40.0);
     float amount_green = 0.2;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);
     frag_color = vec4(col, alpha);
     // frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
-
+    // frag_color.rgb = vec3(1.0 / (1.0 + 4.0 * metallic_roughness.b * metallic_roughness.b));
 #else
     // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
     frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);

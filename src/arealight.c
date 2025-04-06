@@ -116,7 +116,7 @@ polygon_area(AreaLight* al)
 {
     if (al->n < 3) return 0.0f;
 
-// #define USE_TIGHTER_AREA_BOUND  // This underassigns diffuse with glossy materials but is faster otherwise
+#define USE_TIGHTER_AREA_BOUND
 #ifdef USE_TIGHTER_AREA_BOUND
     // Find normal from first 3 points
     vec3 u, v, normal;
@@ -127,9 +127,12 @@ polygon_area(AreaLight* al)
 
     // Construct an orthonormal basis
     vec3 tangent, bitangent;
-    if (fabsf(normal[0]) > fabsf(normal[1])) {
+    if (fabsf(normal[0]) > fabsf(normal[1]))
+    {
         glm_vec3_cross((vec3){0,1,0}, normal, tangent);  // Try y-up first
-    } else {
+    }
+    else
+    {
         glm_vec3_cross((vec3){1,0,0}, normal, tangent);  // Otherwise, x-right
     }
     glm_vec3_normalize(tangent);
@@ -137,7 +140,8 @@ polygon_area(AreaLight* al)
 
     // Project the polygon onto the new 2D basis
     vec2 projected[MAX_UNCLIPPED_NGON];
-    for (int i = 0; i < al->n; ++i) {
+    for (int i = 0; i < al->n; ++i)
+    {
         vec3 p;
         glm_vec3_sub(al->points_worldspace[i], al->points_worldspace[0], p);
         projected[i][0] = glm_vec3_dot(p, tangent);
@@ -146,7 +150,8 @@ polygon_area(AreaLight* al)
 
     // Compute the area using the Shoelace theorem
     float area = 0.0f;
-    for (int i = 0; i < al->n; ++i) {
+    for (int i = 0; i < al->n; ++i)
+    {
         int j = (i + 1) % al->n;
         area += projected[i][0] * projected[j][1] - projected[j][0] * projected[i][1];
     }
@@ -175,8 +180,26 @@ polygon_area(AreaLight* al)
 }
 
 float
-calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable, float param_roughness)
+calculate_area_light_influence_radius(AreaLight* al, float area, float min_perceivable)
 {
+    // LTC Diffuse is lambertian, this finds the influence radius
+    // of the most reflective line from the polygon which are
+    // shading locations in the center line of the polygon along its normal
+    // with the shading locations surface normal directly facing the polygon normal.
+
+    // 1. Use RAW RGB sum without averaging (matches your shading math)
+    float flux = (al->color_rgb_intensity_a[0] + 
+        al->color_rgb_intensity_a[1] + 
+        al->color_rgb_intensity_a[2]) * 
+        al->color_rgb_intensity_a[3] * area;
+
+    // 2. Art more than a science adjustment factor
+    float effective_flux = flux * 4.4f;
+
+    // 3. Solve for radius in Hemispherical irradiance falloff: E = Φ / (2πr²)
+    return sqrt(effective_flux / (2.0f * M_PI * min_perceivable));
+}
+#if 0  // OLD
     /* Math notes:
     For sphere E = flux/(4*pi*r^2) for distance r from a point light
     For an area light the emission is hemispherical: E= flux / (2*pi*r^2)
@@ -199,7 +222,8 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
     if (al->is_double_sided) flux *= 2.0f;
 
     // Inverse square law with hemispherical falloff adjustment
-    return 2.0f* sqrtf(flux / (2.0f * M_PI * min_perceivable));
+    return sqrtf(flux / (2.0f * M_PI * min_perceivable));
 }
+#endif
 
 #endif

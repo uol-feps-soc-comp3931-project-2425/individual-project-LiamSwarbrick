@@ -162,8 +162,8 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
     #define CLUSTER_GRID_SIZE_Z 16//32
 #else
     #define CLUSTER_GRID_SIZE_X 16//24
-#define CLUSTER_GRID_SIZE_Y 9//16
-#define CLUSTER_GRID_SIZE_Z 12//16
+    #define CLUSTER_GRID_SIZE_Y 9//16
+    #define CLUSTER_GRID_SIZE_Z 12//16
 #endif  // INTEGRATED_GPU
 #define CLUSTER_NORMALS_COUNT 1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
@@ -1587,6 +1587,47 @@ draw_gltf_scene(Scene* scene)
             vec4 aabb_max;
             vec4 sphere_of_influence;
             {
+                float area = polygon_area(area_light);
+                float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity);
+                
+                // AABB by getting polygon aabb and expanding by influence radius
+                glm_vec4_copy(points_viewspace[0], aabb_min);
+                glm_vec4_copy(points_viewspace[0], aabb_max);
+                for (int i = 1; i < area_light->n; ++i)
+                {
+                    glm_vec4_minv(aabb_min, points_viewspace[i], aabb_min);
+                    glm_vec4_maxv(aabb_max, points_viewspace[i], aabb_max);
+                }
+                glm_vec4_sub(aabb_min, (vec4){influence_radius, influence_radius, influence_radius, 0.0f}, aabb_min);
+                glm_vec4_add(aabb_max, (vec4){influence_radius, influence_radius, influence_radius, 0.0f}, aabb_max);
+
+                // Lambertian bounding sphere:
+                //  - sphere center = polygon centroid
+                //  - sphere radius = polygon geo_radius + influence radius
+                vec3 centroid = {0.0f, 0.0f, 0.0f};
+                for (int i = 0; i < area_light->n; ++i)
+                {
+                    glm_vec3_add(centroid, points_viewspace[i], centroid);
+                }
+                glm_vec3_scale(centroid, 1.0f / (float)area_light->n, centroid);
+
+                float max_dist_sq = 0.0f;
+                for (int i = 0; i < area_light->n; ++i) {
+                    vec3 delta;
+                    glm_vec3_sub(points_viewspace[i], centroid, delta);
+                    float dist_sq = glm_vec3_dot(delta, delta);
+                    if (dist_sq > max_dist_sq) max_dist_sq = dist_sq;
+                }
+
+                float geo_radius = sqrtf(max_dist_sq);
+                
+                sphere_of_influence[0] = centroid[0];
+                sphere_of_influence[1] = centroid[1];
+                sphere_of_influence[2] = centroid[2];
+                sphere_of_influence[3] = geo_radius + influence_radius;
+            }
+/*
+            {
                 // Find average of points
                 vec3 centroid = { 0.0f, 0.0f, 0.0f };
                 for (int i = 0; i < area_light->n; ++i)
@@ -1607,14 +1648,14 @@ draw_gltf_scene(Scene* scene)
                 }
 
                 float area = polygon_area(area_light);
-                float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity, scene->param_roughness);
+                float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity);
                 
                 sphere_of_influence[0] = centroid[0];
                 sphere_of_influence[1] = centroid[1];
                 sphere_of_influence[2] = centroid[2];
                 sphere_of_influence[3] = geo_radius + influence_radius;
                 
-                // Also use AABB for early rejection in light-cluster assignment
+                // AABB for early rejection in light-cluster assignment
                 glm_vec4_copy(points_viewspace[0], aabb_min);
                 glm_vec4_copy(points_viewspace[0], aabb_max);
                 for (int i = 0; i < area_light->n; ++i)
@@ -1639,7 +1680,7 @@ draw_gltf_scene(Scene* scene)
                 glm_vec4_sub(aabb_min, influence_vec, aabb_min);
                 glm_vec4_add(aabb_max, influence_vec, aabb_max);
             }
-
+*/
             float* mapped_arealight = &mapped_arealight_ssbo[area_id * sizeof(AreaLight) / sizeof(f32)];
 
             // Set mapped color and intensity
@@ -1893,7 +1934,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->attenuation_quadratic = 50.0f;//25.0f;//= 10.0f;
 
         // Suntemple has some shinies but not like glossy
-        out_loaded_scene->param_roughness = 1.0f;
+        out_loaded_scene->param_roughness = 0.7;
         out_loaded_scene->param_min_intensity = 0.01f;
         out_loaded_scene->param_intensity_saturation = 10.0f;
     }
