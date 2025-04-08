@@ -157,9 +157,9 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
 #define INTEGRATED_GPU
 #ifdef INTEGRATED_GPU
-    #define CLUSTER_GRID_SIZE_X 32//32//16 
-    #define CLUSTER_GRID_SIZE_Y 32//32//9
-    #define CLUSTER_GRID_SIZE_Z 16//32
+    #define CLUSTER_GRID_SIZE_X 32//8//32//32//16 
+    #define CLUSTER_GRID_SIZE_Y 32//8//32//32//9
+    #define CLUSTER_GRID_SIZE_Z 16//8//16//32
 #else
     #define CLUSTER_GRID_SIZE_X 16//24
     #define CLUSTER_GRID_SIZE_Y 9//16

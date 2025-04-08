@@ -62,3 +62,15 @@ FORCED_SPECULAR_PEAK_TEST is a new one I made last, and it seems to be the best 
 - There must be a but in my implementation of more normals maybe? idk
 
 
+====================
+06/04/2025 test on laptop:
+Suntemple scene 1 at 1280x720p, 2000 area lights, no point lights
+\[
+\begin{aligned}
+\text{Cluster grid}             & \text{Compute time (ms)} & FPS & Light ops \\
+8 \times 8 \times 8 \times 1    &  4                       & 4.5 & 53680608 \\
+32 \times 32 \times 16 \times 1 & 12                       & 5   & 45924235 \\
+\end{aligned}
+\]
+So if the very inefficient brute force approach is replaced, the compute time can be reduced to support
+many more lights.
