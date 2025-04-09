@@ -278,8 +278,8 @@ load_image(const char* filename, cgltf_image* image)
         // Not supporting embedded images in glTF files
         if (strncmp(image->uri, "data:", 5) == 0)
         {
-            // In future could add something similar to https://github.com/google/filament/blob/main/libs/gltfio/src/ResourceLoader.cpp#L133
             printf("Problem with %s, Currently not supporting embedded images in glTF files soz.\n", filename);
+            // In future could add something similar to https://github.com/google/filament/blob/main/libs/gltfio/src/ResourceLoader.cpp#L133
             exit(1);
         }
 
@@ -802,7 +802,7 @@ typedef struct Program
     // LTC1 and LTC2 contain matrices for transforming the clamped cosine distribution
     // to linearly transformed cosine distributions
     u32 LTC1_texture;  // Inverse M
-    u32 LTC2_texture;  // (GGX norm, fresnel, 0(unused), sphere for horizon-clipping)
+    u32 LTC2_texture;  // (GGX norm, schlick fresnel (1-cosine)^5 term, 0(unused), sphere for horizon-clipping)
 
     FreeCamera cam;
     Scene scene;
@@ -1267,10 +1267,10 @@ add_gltf_node_draw_calls(Scene* scene, FreeCamera* camera, u32 opaque_program, c
     // Compute model matrix = parent_matrix * node's matrix   
     mat4 model = GLM_MAT4_IDENTITY_INIT;
     {
-#if 0  // Turns out cgltf provides an implementation to get the node world transform
+#if 0  // Turns out cgltf provides an implementation to get the node world transform but I already did it meself
         cgltf_node_transform_world(node, (float*)model);
 #else
-        // Node transform either in matrix format matrix=T*R*S or T,R,S seperately (translation vector, rotation quaternion, scale vector)
+        // glTF node transform either in matrix format matrix=T*R*S or T,R,S seperately (translation vector, rotation quaternion, scale vector)
 
         if (node->has_matrix)
         {
@@ -1295,7 +1295,6 @@ add_gltf_node_draw_calls(Scene* scene, FreeCamera* camera, u32 opaque_program, c
             
             if (node->has_rotation)
             {
-                // printf("rot: %f, %f, %f, %f\n", node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3]);
                 versor rotation_quaternion = { node->rotation[0], node->rotation[1], node->rotation[2], node->rotation[3] };
                 glm_quat_rotate(node_matrix, rotation_quaternion, node_matrix);
             }
@@ -1317,10 +1316,6 @@ add_gltf_node_draw_calls(Scene* scene, FreeCamera* camera, u32 opaque_program, c
         mat4 mv_matrix; glm_mat4_mul(camera->view_matrix, model, mv_matrix);
         mat4 mvp_matrix; glm_mat4_mul(camera->camera_matrix, model, mvp_matrix);
         mat4 normal_matrix; glm_mat4_inv(mv_matrix, normal_matrix); glm_mat4_transpose(normal_matrix);
-
-        // glProgramUniformMatrix4fv(opaque_program, PBR_LOC_mvp, 1, GL_FALSE, (f32*)mvp_matrix);
-        // glProgramUniformMatrix4fv(opaque_program, PBR_LOC_model_view, 1, GL_FALSE, (f32*)mv_matrix);
-        // glProgramUniformMatrix4fv(opaque_program, PBR_LOC_normal_matrix, 1, GL_FALSE, (f32*)normal_matrix);
 
         // Find node's mesh and get its index
         cgltf_mesh* mesh = node->mesh;  // e.g. nodes->mesh = &scene->data->meshes[2];
@@ -1464,8 +1459,6 @@ render_area_lights(int light_count, AreaLight* arealights)
     glUseProgram(program.shader_area_light_polygons);
     glProgramUniformMatrix4fv(program.shader_area_light_polygons, 0, 1, GL_FALSE, (f32*)program.cam.camera_matrix);
 
-    // glPointSize(24.0f);
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_POINT);
     int offset = 0;
     for (int i = 0; i < light_count; i++)
     {
@@ -1479,7 +1472,6 @@ render_area_lights(int light_count, AreaLight* arealights)
         }
         offset += arealights[i].n;
     }
-    // glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     // Cleanup
     glDeleteBuffers(1, &vbo);
@@ -1496,14 +1488,12 @@ draw_gltf_scene(Scene* scene)
     u32 light_assignment_shader = program.shader_light_assignment;
     b32 enable_clustered_shading = program.is_clustered_shading_enabled;
 
-    // OLD UNNECESSARY: Make sure SSBOs are aren't unbound by thirdparty GUI library
+    // OLD AND UNNECESSARY, just make sure SSBOs are aren't unbound by thirdparty GUI library or by deleting and recreating the SSBOs somewhere
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_POINTLIGHTS, program.point_light_ssbo);
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_AREALIGHTS, program.area_light_ssbo);
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
 
     // Reset light op counter to 0
-    // u32 zero = 0;
-    // glNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &zero);
     *program.light_ops_mapped_pointer = 0;
 
     u32 num_point_lights = array_length(&program.point_lights, sizeof(PointLight));
@@ -1518,12 +1508,6 @@ draw_gltf_scene(Scene* scene)
             program.point_light_ssbo_max = max(1, num_point_lights);  // Increase buffer by increments of 50 point lights
             size_t new_size = sizeof(PointLight) * program.point_light_ssbo_max;
             glNamedBufferData(program.point_light_ssbo, new_size, NULL, GL_DYNAMIC_DRAW);
-            
-            // Old code where i recreated the buffer and then had to rebind buffer base
-            // glDeleteBuffers(1, &scene->point_light_ssbo);
-            // glCreateBuffers(1, &scene->point_light_ssbo);
-            // glNamedBufferData(scene->point_light_ssbo, new_size, NULL, GL_DYNAMIC_DRAW);
-            // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_POINTLIGHTS, scene->point_light_ssbo);
         }
 
         if (num_area_lights > program.area_light_ssbo_max)
@@ -1550,7 +1534,6 @@ draw_gltf_scene(Scene* scene)
                 scene->attenuation_linear,
                 scene->attenuation_constant
             );
-            // printf("range: %f\n", point_light_range);
 
             float* mapped_pl = &mapped_pl_ssbo[point_id * sizeof(PointLight) / sizeof(f32)];
 
@@ -1579,10 +1562,9 @@ draw_gltf_scene(Scene* scene)
             for (int vertex = 0; vertex < MAX_UNCLIPPED_NGON; ++vertex)
             {
                 glm_mat4_mulv(camera->view_matrix, area_light->points_worldspace[vertex], points_viewspace[vertex]);
-                // glm_vec4_copy(area_light->points_worldspace[vertex], points_viewspace[vertex]);
             }
             
-            // Compute bounding box and sphere:
+            // Clustered shading CPU side before light assignment: precompute bounding box and sphere:
             vec4 aabb_min;
             vec4 aabb_max;
             vec4 sphere_of_influence;
@@ -1626,61 +1608,7 @@ draw_gltf_scene(Scene* scene)
                 sphere_of_influence[2] = centroid[2];
                 sphere_of_influence[3] = geo_radius + influence_radius;
             }
-/*
-            {
-                // Find average of points
-                vec3 centroid = { 0.0f, 0.0f, 0.0f };
-                for (int i = 0; i < area_light->n; ++i)
-                {
-                    glm_vec3_add(centroid, points_viewspace[i], centroid);
-                }
-                glm_vec3_scale(centroid, 1.0f / (float)area_light->n, centroid);
-                
-                // Find point with max distance from centroid
-                float geo_radius = 0.0f;  
-                for (int i = 0; i < area_light->n; ++i)
-                {
-                    float distance = glm_vec3_distance(centroid, points_viewspace[i]);
-                    if (distance > geo_radius)
-                    {
-                        geo_radius = distance;
-                    }
-                }
 
-                float area = polygon_area(area_light);
-                float influence_radius = calculate_area_light_influence_radius(area_light, area, scene->minimum_perceivable_intensity);
-                
-                sphere_of_influence[0] = centroid[0];
-                sphere_of_influence[1] = centroid[1];
-                sphere_of_influence[2] = centroid[2];
-                sphere_of_influence[3] = geo_radius + influence_radius;
-                
-                // AABB for early rejection in light-cluster assignment
-                glm_vec4_copy(points_viewspace[0], aabb_min);
-                glm_vec4_copy(points_viewspace[0], aabb_max);
-                for (int i = 0; i < area_light->n; ++i)
-                {
-                    if (aabb_min[0] > points_viewspace[i][0])
-                        aabb_min[0] = points_viewspace[i][0];
-                    if (aabb_max[0] < points_viewspace[i][0])
-                        aabb_max[0] = points_viewspace[i][0];
-                    
-                    if (aabb_min[1] > points_viewspace[i][1])
-                        aabb_min[1] = points_viewspace[i][1];
-                    if (aabb_max[1] < points_viewspace[i][1])
-                        aabb_max[1] = points_viewspace[i][1];
-
-                    if (aabb_min[2] > points_viewspace[i][2])
-                        aabb_min[2] = points_viewspace[i][2];
-                    if (aabb_max[2] < points_viewspace[i][2])
-                        aabb_max[2] = points_viewspace[i][2];
-                }
-
-                vec4 influence_vec = { influence_radius, influence_radius, influence_radius, 0.0f };
-                glm_vec4_sub(aabb_min, influence_vec, aabb_min);
-                glm_vec4_add(aabb_max, influence_vec, aabb_max);
-            }
-*/
             float* mapped_arealight = &mapped_arealight_ssbo[area_id * sizeof(AreaLight) / sizeof(f32)];
 
             // Set mapped color and intensity
@@ -1759,8 +1687,6 @@ draw_gltf_scene(Scene* scene)
 
         // Make sure the writes to the cluster SSBO happen before the next shader
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        // glMemoryBarrier(GL_ALL_BARRIER_BITS);
-        // glFinish();
 
         // Assign lights to clusters with a second compute shader
         glUseProgram(light_assignment_shader);  // lights_to_clusters.comp
@@ -1782,8 +1708,6 @@ draw_gltf_scene(Scene* scene)
 
         glDispatchCompute(dispatched_workgroups, 1, 1);
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        // glMemoryBarrier(GL_ALL_BARRIER_BITS);
-        // glFinish();
 
         glEndQuery(GL_TIME_ELAPSED);
     }
@@ -1855,7 +1779,7 @@ draw_gltf_scene(Scene* scene)
         execute_pbr_draw_call(shader_program, draw_call);
     }
     
-    // Transparent render pass (includes alphamasked objects for now as well)
+    // Transparent render pass (had to include alphamasked objects for now as well because using early fragment tests feature)
     u32 num_transparents = array_length(&transparent_draw_calls, sizeof(PBRDrawCall));
     // OLD: qsort won't work for suntemple due to seperate trees being stored in one primitive so they are in the same draw call, order independant method required
     // qsort(transparent_draw_calls.data_buffer, transparent_draw_calls.used_size / sizeof(PBRDrawCall), sizeof(PBRDrawCall), compare_draw_call_depths);
@@ -1866,15 +1790,13 @@ draw_gltf_scene(Scene* scene)
     }
     
     // Render area lights
-    // glEnable(GL_CULL_FACE);  // Must explicitly reenable this in case a double sided item was just rendered.
     glDisable(GL_CULL_FACE);
     render_area_lights(num_area_lights, program.area_lights.data_buffer);
 
     free_array(&opaque_draw_calls);
     free_array(&transparent_draw_calls);
 
-    // Check number of light ops
-    // glGetNamedBufferSubData(program.light_ops_atomic_counter_buffer, 0, sizeof(u32), &program.last_light_ops_value);
+    // Check number of light ops by reading from mapped memory buffer
     program.last_light_ops_value = *program.light_ops_mapped_pointer;
 }
 
@@ -1922,8 +1844,12 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     }
     else if (scene_id == 1)
     {
-        // *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
+#define USE_MIRRORED_SUNTEMPLE
+#ifndef USE_MIRRORED_SUNTEMPLE
+        *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
+#else
         *out_loaded_scene = load_gltf_scene("data/suntemple/mirroredsuntemple/mirroredsuntemple.gltf");
+#endif  // USE_MIRRORED_SUNTEMPLE
 
         num_point_lights = sizeof(suntemple_pointlight_positions) / sizeof(vec3);
         point_light_positions = suntemple_pointlight_positions;
@@ -1986,8 +1912,8 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
 
 
         // Not working scenes
-        // *out_loaded_scene = load_gltf_scene("data/simple-instancing-glTF/SimpleInstancing.gltf");  // Don't support no materials
-        // *out_loaded_scene = load_gltf_scene("data/fox-glTF/Fox.gltf");  // Don't support vertex colors
+        // *out_loaded_scene = load_gltf_scene("data/simple-instancing-glTF/SimpleInstancing.gltf");  // I don't support files without materials
+        // *out_loaded_scene = load_gltf_scene("data/fox-glTF/Fox.gltf");  // I don't support vertex colors
 
         num_point_lights = 0;
         point_light_positions = NULL;
@@ -2174,8 +2100,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
             al = make_area_light((vec3){-32.767750,-24.896996,28.187532}, (vec3){-0.670935,-0.202787,0.713249}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){-25.157635,-17.412888,15.889715}, (vec3){-0.474582,-0.219079,0.852512}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
             al = make_area_light((vec3){-26.575705,-3.489005,-23.941166}, (vec3){-0.196450,0.426158,0.883061}, 0, 4, -1.0f, -1.0f, -1.0f, -1.0f);push_element_copy(&program.area_lights, sizeof(AreaLight), &al);
-
-            // Copy to mirrored suntemples (0,0,0) -> (250,0,0), (0, 0, 250), and (250, 0, 250)
+        
+        #ifdef USE_MIRRORED_SUNTEMPLE
+            // Copy to mirrored suntemples which are each (250, 0, 250) units apart
             int initial_num_arear_lights = (int)array_length(&program.area_lights, sizeof(AreaLight));
             int initial_num_point_lights = (int)array_length(&program.point_lights, sizeof(PointLight));
             for (int mirror_z = 0; mirror_z < 4; ++mirror_z)
@@ -2214,6 +2141,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
                     }
                 }
             }
+        #endif  // USE_MIRRORED_SUNTEMPLE
         }
     }
     if (scene_id == 3)
@@ -3141,7 +3069,7 @@ main(int argc, char** argv)
         
         update_free_camera(&program.cam);
         
-        // Animate area light intensity
+        // // Animate area light intensity
         // for (int i = 0; i < array_length(&program.area_lights, sizeof(AreaLight)); ++i)
         // {
         //     AreaLight* al = get_element(&program.area_lights, sizeof(AreaLight), i);
@@ -3165,7 +3093,7 @@ main(int argc, char** argv)
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
             
             // Display compute time query in top left:
-            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 75), NK_WINDOW_NO_SCROLLBAR))
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 95), NK_WINDOW_NO_SCROLLBAR))
             {
                 char fps_str[64];
                 snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
@@ -3181,6 +3109,11 @@ main(int argc, char** argv)
                 snprintf(grid_str, sizeof(grid_str), "Cluster grid (%d,%d,%d, %d)", CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z, CLUSTER_NORMALS_COUNT);
                 nk_layout_row_dynamic(program.gui_context, 20, 1);
                 nk_label(program.gui_context, grid_str, NK_TEXT_LEFT);
+
+                char num_area_lights_str[64];
+                snprintf(num_area_lights_str, sizeof(num_area_lights_str), "Num Area lights: %d", (int)array_length(&program.area_lights, sizeof(AreaLight)));
+                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_label(program.gui_context, num_area_lights_str, NK_TEXT_LEFT);
             }
             nk_end(program.gui_context);
 

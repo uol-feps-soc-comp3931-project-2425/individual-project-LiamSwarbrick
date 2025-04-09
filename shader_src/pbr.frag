@@ -301,9 +301,9 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     uv = uv * LUT_SCALE + LUT_BIAS;
 
     // Fetch horizon clipped norm of the transformed BRDF me thinks
-    float scale = texture(LTC2_texture, uv).w;
+    float horizon_clipped_scale = texture(LTC2_texture, uv).w;
 
-    float sum = len * scale;
+    float sum = len * horizon_clipped_scale;
 
     // Outgoing radiance from fragment from the polygon
     vec3 Lo_i = vec3(sum);
@@ -465,10 +465,10 @@ main()
             specular = LTC_evaluate(N, V, frag_position_viewspace, Minv, al.points_viewspace, al.n, al.is_double_sided == 1);
 
             // GGX BRDF shadowing and Fresnel
-            // t2.x: shadowedF90 (F90 normally should be 1.0)
+            // t2.x: shadowedF90 (F90 normally should be 1.0, hence the difference between the classic schlick equation below)
             // t2.y: Smith function for Geometric Attenuation Term, it is dot(V or L, H).
             vec3 F0 = mix(vec3(0.04), base_color.rgb, metallic);
-            specular *= F0 * t2.x + (1.0 - F0) * t2.y;
+            specular *= F0 * t2.x + (1.0 - F0) * t2.y;  // Schlick with shadowed F90
         }
         
         sum_arealight_radiance += al.color_rgb_intensity_a.a * al.color_rgb_intensity_a.rgb * (specular + base_color.rgb * diffuse);
@@ -495,8 +495,8 @@ main()
     // float hue = float(200 + (tile_index % 700)) / 1000.0;
     // float hue = float(000 + (tile_index % 700)) / 1000.0;
 #ifdef ENABLE_CLUSTERED_SHADING
-    float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
-    // float hue = 0.5;
+    // float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
+    float hue = 0.5;
 #else
     float hue = 0.5;
 #endif
@@ -511,7 +511,8 @@ main()
 
     float amount_red = float(num_point_lights/15.0);
     // float amount_red = float(num_area_lights);
-    float amount_blue = float(num_area_lights/40.0);
+    // float amount_blue = float(num_area_lights/40.0);
+    float amount_blue = float(num_area_lights/30.0);
     float amount_green = 0.2;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);

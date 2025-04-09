@@ -199,8 +199,10 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     float effective_distance = max(distance_to_light - sphere.w, 0.0);
     float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
     float alpha = area_lights[i].color_rgb_intensity_a.a;
-    float scaled_intensity = (alpha * attenuation) / (alpha * attenuation + param_intensity_saturation);
+    float raw_intensity = alpha * attenuation;
+    float scaled_intensity = raw_intensity / (raw_intensity + param_intensity_saturation);
     // float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
+    // float specular_tau = exp2(log2(param_min_intensity / (scaled_intensity + 1e-6)) * (1.0/param_roughness));
     float specular_tau = exp2(log2(param_min_intensity / (scaled_intensity + 1e-6)) * (1.0/param_roughness));
 
     #if CLUSTER_NORMALS_COUNT == 1
@@ -223,7 +225,7 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
         // 4. Roughness-adjusted threshold
         float angular_tolerance = mix(0.05, 0.5, param_roughness); // Wider tolerance for rough mats
         specular_passed = (NdotH > (specular_tau - angular_tolerance)) && 
-                        (scaled_intensity > param_min_intensity);
+                        (raw_intensity > param_min_intensity);
     #else
         // float max_dot = 0.0;
         // for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
