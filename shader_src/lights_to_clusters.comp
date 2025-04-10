@@ -80,7 +80,7 @@ struct NormalCone
 bool
 sphere_aabb_intersection(vec3 center, float radius, vec3 aabb_min, vec3 aabb_max)
 {
-    // Cloest point of AABB to the center of the sphere
+    // Closest point of AABB to the center of the sphere
     vec3 closest_point = clamp(center, aabb_min, aabb_max);
     closest_point -= center;
     float distance_squared = dot(closest_point, closest_point);
