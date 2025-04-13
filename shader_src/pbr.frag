@@ -219,7 +219,7 @@ integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
     // float cross_z = normalize(cross(point_i, point_j)).z;
     // return x * cross_z;
 
-    // standard acos can be made more numerically unstable with a custom polynomial for this use case, avoiding float artefacts
+    // standard acos can be made less numerically unstable with a custom polynomial for this use case, avoiding float artefacts
     float x = dot(point_i, point_j);
     float y = abs(x);
     float a = 0.8543985 + (0.4965155 + 0.0145206 * y) * y;
@@ -249,6 +249,33 @@ integrate_lambertian_hemisphere(vec3 points[MAX_UNCLIPPED_NGON], int n)
 
     return vsum;
 }
+
+// vec3
+// integrate_edge_sector_vec_diffuse(vec3 point_i, vec3 point_j)
+// {
+//     // Cheaper quadratic good enough for diffuse
+//     float x = dot(point_i, point_j);
+//     float y = abs(x);
+//     float a = 5.42031 + (3.12829 + 0.0902326 * y) * y;
+//     float b = 3.45068 + (4.18814 + y) * y;
+//     float theta_sintheta = a / b;
+//     if (a < 0.0)
+//     {
+//         theta_sintheta = M_PI*inversesqrt(1.0 - x*x) - theta_sintheta;
+//     }
+//     return cross(point_i, point_j) * theta_sintheta;
+// }
+
+// vec3
+// integrate_lambertian_hemisphere_diffuse(vec3 points[MAX_UNCLIPPED_NGON], int n)
+// {
+//     vec3 vsum = integrate_edge_sector_vec_diffuse(points[n-1], points[0]);  // Start with the wrap around pair (n-1, 0)
+//     for (int i = 0; i < n-1; ++i)
+//     {
+//         vsum += integrate_edge_sector_vec_diffuse(points[i], points[i+1]);
+//     }
+//     return vsum;
+// }
 
 /*
 N := fragment normal vector
@@ -309,6 +336,39 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     vec3 Lo_i = vec3(sum);
     return Lo_i;
 }
+
+// vec3
+// LTC_evaluate_diffuse(vec3 N, vec3 V, vec3 P, vec4 viewspace_points[MAX_UNCLIPPED_NGON], int viewspace_points_n, bool double_sided)
+// {
+//     #ifdef COUNT_LIGHT_OPS
+//     atomicCounterIncrement(light_ops_atomic_counter_buffer);
+//     #endif  // COUNT_LIGHT_OPS
+
+//     // No transformation, and using slightly faster quadratic approximation for arccos
+//     vec3 points_o[MAX_UNCLIPPED_NGON];
+//     for (int i = 0; i < viewspace_points_n; ++i)
+//     {
+//         viewspace_points[i].xyz = viewspace_points[i].xyz - P;  // <- Applying identity matrix
+//         points_o[i] = normalize(viewspace_points[i].xyz);
+//     }
+
+//     // Early exit if fragment is behind polygon
+//     vec3 dir = viewspace_points[0].xyz - P;
+//     vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
+//     bool behind = dot(dir, light_normal) < 0.;
+//     if (!behind && !double_sided)
+//     {
+//         return vec3(0.0);
+//     }
+
+//     vec3 vsum = integrate_lambertian_hemisphere_diffuse(points_o, viewspace_points_n);
+//     float len = length(vsum);
+//     float sum = len;
+
+//     // Outgoing radiance from fragment from the polygon
+//     vec3 Lo_i = vec3(sum);
+//     return Lo_i;
+// }
 
 void
 main()
@@ -456,6 +516,7 @@ main()
         #endif
         {
             diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
+            // diffuse = LTC_evaluate_diffuse(N, V, frag_position_viewspace, al.points_viewspace, al.n, al.is_double_sided == 1);
         }
 
         #ifdef ENABLE_CLUSTERED_SHADING

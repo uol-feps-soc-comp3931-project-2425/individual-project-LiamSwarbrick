@@ -410,9 +410,9 @@ main()
     uint clusters_per_layer = CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y;
     uint combined_z = index / clusters_per_layer;
     uint remainder = index % clusters_per_layer;
-    uint tile_y = remainder / CLUSTER_GRID_SIZE_X;
-    uint tile_x = remainder % CLUSTER_GRID_SIZE_X;
-    uint tile_z = combined_z / CLUSTER_NORMALS_COUNT;
+    // uint tile_y = remainder / CLUSTER_GRID_SIZE_X;
+    // uint tile_x = remainder % CLUSTER_GRID_SIZE_X;
+    // uint tile_z = combined_z / CLUSTER_NORMALS_COUNT;
     uint normal_bin = combined_z % CLUSTER_NORMALS_COUNT;
 
     // OLD TEMP for CLUSTER_NORMALS_COUNT=6, define representative normals manually for 1x1x1 cube faces:
