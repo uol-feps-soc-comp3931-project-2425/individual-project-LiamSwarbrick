@@ -155,7 +155,8 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-#define INTEGRATED_GPU
+// #define INTEGRATED_GPU
+#define ONE_CLUSTER_PER_WORKGROUP  // <-- Much better bruteforce performance
 #ifdef INTEGRATED_GPU
     #define CLUSTER_GRID_SIZE_X 32//8//32//32//16 
     #define CLUSTER_GRID_SIZE_Y 18//8//32//32//9
@@ -1709,15 +1710,21 @@ draw_gltf_scene(Scene* scene)
         glProgramUniform1f(light_assignment_shader, 4, scene->param_min_intensity);
         glProgramUniform1f(light_assignment_shader, 5, scene->param_intensity_saturation);
 
-#ifdef INTEGRATED_GPU
-        const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 512;
-#else
-        const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 64;
-#endif
+
+    #ifdef ONE_CLUSTER_PER_WORKGROUP
+        glDispatchCompute(NUM_CLUSTERS, 1, 1);
+    #else
+        #ifdef INTEGRATED_GPU
+            const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 512;
+        #else
+            const u32 LIGHT_ASSIGNMENT_LOCAL_SIZE = 32;//64;
+        #endif
+
         const int dispatched_workgroups = NUM_CLUSTERS / LIGHT_ASSIGNMENT_LOCAL_SIZE;
         assert(NUM_CLUSTERS % LIGHT_ASSIGNMENT_LOCAL_SIZE == 0);
 
         glDispatchCompute(dispatched_workgroups, 1, 1);
+    #endif
         glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
 
         glEndQuery(GL_TIME_ELAPSED);
@@ -2613,7 +2620,12 @@ reload_shaders(b32 only_reload_pbr_shaders)
 
         program.shader_area_light_polygons = load_shader_from_files("shader_src/polygon.vert", "shader_src/polygon.frag", "polygon_shader");
         program.shader_compute_clusters = load_compute_shader_from_file_with_header("shader_src/voxel_clusters_viewspace.comp", "compute_clusters_shader", header_text);
+
+        #ifdef ONE_CLUSTER_PER_WORKGROUP
+        program.shader_light_assignment = load_compute_shader_from_file_with_header("shader_src/per_warp_light_assignment.comp", "light_assignment_shader", header_text);
+        #else
         program.shader_light_assignment = load_compute_shader_from_file_with_header("shader_src/lights_to_clusters.comp", "light_assignment_shader", header_text);
+        #endif
     }
 
     printf("  ...Complete.\n");
@@ -3129,7 +3141,7 @@ main(int argc, char** argv)
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
             
             // Display compute time query in top left:
-            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 250, 140), NK_WINDOW_NO_SCROLLBAR))
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 250, 150), NK_WINDOW_NO_SCROLLBAR))
             {
                 char fps_str[64];
                 snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
