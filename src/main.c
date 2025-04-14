@@ -835,6 +835,8 @@ typedef struct Program
     u32 shading_time_query;
     u64 compute_time_last_frame;
     u64 shading_time_last_frame;
+    double arealight_precomp_time_last_frame;
+    double arealight_precomp_time_this_frame;
 
     // Dynamically add/change point lights in scene here
     DynamicArray point_lights;
@@ -1553,6 +1555,9 @@ draw_gltf_scene(Scene* scene)
         }
         glUnmapNamedBuffer(program.point_light_ssbo);
         
+        // Start timer for arealight precomputation
+        double arealight_precomp_timer_start = glfwGetTime();
+
         // Update area lights SSBO:
         f32* mapped_arealight_ssbo = (float*)glMapNamedBuffer(program.area_light_ssbo, GL_WRITE_ONLY);
         for (u32 area_id = 0; area_id < num_area_lights; ++area_id)
@@ -1650,6 +1655,10 @@ draw_gltf_scene(Scene* scene)
             }
         }
         glUnmapNamedBuffer(program.area_light_ssbo);
+
+        double arealight_precomp_timer_end = glfwGetTime();
+        program.arealight_precomp_time_last_frame = program.arealight_precomp_time_this_frame;
+        program.arealight_precomp_time_this_frame = arealight_precomp_timer_end - arealight_precomp_timer_start;
     }
 
     if (enable_clustered_shading)
@@ -3031,6 +3040,7 @@ main(int argc, char** argv)
 
         // Calculate average fps per half second
         static double displayed_fps = 0.0;
+        static double displayed_precomp_time = 0.0;
         static double displayed_compute_time = 0.0;
         static double displayed_shading_time = 0.0;
         {
@@ -3038,7 +3048,10 @@ main(int argc, char** argv)
             static double num_seconds = 0.0;
             num_frames++;
             num_seconds += (double)program.dt;
-
+            
+            static double precomp_total = 0.0;
+            precomp_total += program.arealight_precomp_time_last_frame;
+        
             static double compute_total = 0.0;
             compute_total += program.compute_time_last_frame / 1e6;
             
@@ -3048,10 +3061,12 @@ main(int argc, char** argv)
             if (num_seconds > 0.5)
             {
                 displayed_fps = (double)num_frames / num_seconds;
+                displayed_precomp_time = precomp_total / (double)num_frames;
                 displayed_compute_time = compute_total / (double)num_frames;
                 displayed_shading_time = shading_total / (double)num_frames;
                 num_frames = 0;
                 num_seconds = 0.0;
+                precomp_total = 0.0;
                 compute_total = 0.0;
                 shading_total = 0.0;
             }
@@ -3114,17 +3129,22 @@ main(int argc, char** argv)
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
             
             // Display compute time query in top left:
-            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 125), NK_WINDOW_NO_SCROLLBAR))
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 250, 140), NK_WINDOW_NO_SCROLLBAR))
             {
                 char fps_str[64];
                 snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
                 nk_layout_row_dynamic(program.gui_context, 20, 1);
                 nk_label(program.gui_context, fps_str, NK_TEXT_LEFT);
-
+                
                 char time_str[64];
-                snprintf(time_str, sizeof(time_str), "Compute Time: %.2f ms", displayed_compute_time);
+                snprintf(time_str, sizeof(time_str), "Arealight Precomp: %f ms", displayed_precomp_time);
                 nk_layout_row_dynamic(program.gui_context, 20, 1);
                 nk_label(program.gui_context, time_str, NK_TEXT_LEFT);
+
+                char time1_str[64];
+                snprintf(time1_str, sizeof(time1_str), "Compute Time: %.2f ms", displayed_compute_time);
+                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_label(program.gui_context, time1_str, NK_TEXT_LEFT);
                 
                 char time2_str[64];
                 snprintf(time2_str, sizeof(time2_str), "Shading Time: %.2f ms", displayed_shading_time);
