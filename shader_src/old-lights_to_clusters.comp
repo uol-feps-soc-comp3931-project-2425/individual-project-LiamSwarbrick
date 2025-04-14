@@ -150,6 +150,8 @@ is_aabb_fully_behind_plane(vec3 aabb_min, vec3 aabb_max, vec3 plane_normal, floa
     return signed_distance < 0;
 }
 
+#define NEW_IMPLEMENTATION
+#ifdef NEW_IMPLEMENTATION
 uint
 test_arealight(uint i, Cluster cluster, NormalCone nc)
 {
@@ -181,6 +183,7 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     bool diffuse_passed = false;
     if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
     {
+        
         #if CLUSTER_NORMALS_COUNT == 1
             diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
         #else
@@ -255,6 +258,147 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     if (specular_passed) result |= 0x2u;
     return result;
 }
+#else
+uint
+test_arealight(uint i, Cluster cluster, NormalCone normal_cone)
+{
+    // Half space rejection for single sided area lights
+    if (area_lights[i].is_double_sided == 0)
+    {
+        // Find plane equation for area light
+        vec3 a = area_lights[i].points_viewspace[0].xyz;
+        vec3 b = area_lights[i].points_viewspace[1].xyz;
+        vec3 c = area_lights[i].points_viewspace[2].xyz;
+        vec3 plane_normal = cross(b - a, c - a);
+        float plane_constant = -dot(plane_normal, a);  // d = -dot(N,X)
+
+        if (is_aabb_fully_behind_plane(cluster.min_point.xyz, cluster.max_point.xyz, plane_normal, plane_constant))
+        {
+            return 0u;
+        }
+    }
+
+    // Area light diffuse bounding sphere precomputed on CPU each frame
+    vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
+
+// SPECULAR:
+    bool specular_passed = false;
+    vec3 cluster_center = (cluster.min_point.xyz + cluster.max_point.xyz) * 0.5;
+    vec3 view_dir = normalize(-cluster_center);
+
+    // Suntemple:
+    // float param_roughness             = 1.0;
+    // float param_min_intensity         = 0.01;
+    // float param_intensity_saturation  = 10.0;//= 0.5;//=100.0;
+
+    // Flat test
+    // float param_roughness             = 1.0;
+    // float param_min_intensity         = 0.01;
+    // float param_intensity_saturation  = 0.5;//= 0.5;//=100.0;
+
+    // NOTE: Can set intensity saturation to like 50.0 or 100.0 in scenes mostly composed of rough materials
+    // In scenes almost entirely shiny then setting to 1.0 or 0.5 may be necessary to avoid obvious cutting off of specular.
+
+    vec3 light_sphere_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
+    float light_sphere_radius = area_lights[i].sphere_of_influence_center_xyz_radius_w.w;
+    float distance_to_light = distance(cluster_center, light_sphere_center);
+    float effective_distance = max(distance_to_light - light_sphere_radius, 0.0);
+    float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
+    float scaled_intensity = (area_lights[i].color_rgb_intensity_a.a * attenuation) / 
+                            (area_lights[i].color_rgb_intensity_a.a * attenuation + param_intensity_saturation);
+    float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
+
+
+#if CLUSTER_NORMALS_COUNT == 1  // Normal based clustering disabled
+    #define HEURISTIC_1
+    #define FORCE_SPECULAR_PEAK_TEST
+    // #define NUCLEAR_OVERASSIGN_SPECULAR
+
+    // Heuristic 1: View-light alignment test (conservative and bad around glossy surfaces but fast)
+    #ifdef HEURISTIC_1
+        vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
+        vec3 light_dir = normalize(light_center - cluster_center);
+        vec3 H = normalize(view_dir + light_dir);
+        float min_NdotH = sqrt(specular_tau);  // Convert intensity threshold to angular threshold
+
+        // Test if light could possible produce specular for any normal
+        specular_passed = dot(view_dir, H) > min_NdotH;
+
+        // Intensity falloff adjustment
+        specular_passed = specular_passed && (scaled_intensity > param_min_intensity);
+    #endif  // HEURISTIC_1
+
+    // Force specular peak test (will overassign but never underassign -> slow)
+    #ifdef FORCE_SPECULAR_PEAK_TEST
+        // Fake normal cone covering all possible normals
+        float fake_half_angle = M_PI / 2.0; // Cover entire hemisphere
+        float fake_cos_threshold = cos(fake_half_angle);
+        float fake_sin_threshold = sin(fake_half_angle);
+        vec3 fake_cluster_normal = view_dir; // Use view direction as pseudo-normal
+        
+        float max_dot = 0.0;
+        for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
+        {
+            vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
+            vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
+            vec3 H = normalize(view_dir + light_to_cluster_dir);
+
+            float H_dot_C = dot(H, fake_cluster_normal);
+            float term = H_dot_C * fake_cos_threshold + fake_sin_threshold * sqrt(1.0 - H_dot_C * H_dot_C);
+            float max_N_dot_H = max(1.0, term);
+
+            max_dot = max(max_dot, max_N_dot_H);
+            if (max_dot > specular_tau) break;
+        }
+        
+        // Combine with heuristic result
+        specular_passed = specular_passed || (max_dot > specular_tau);
+    #endif  // FORCE_SPECULAR_PEAK_TEST
+
+    #ifdef NUCLEAR_OVERASSIGN_SPECULAR
+        // The only thing guarunteed to work is to assign specular to all clusters in the half space
+        specular_passed = true;
+    #endif  // NUCLEAR_OVERASSIGN_SPECULAR
+
+#else
+    float max_dot = 0.0;
+    for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
+    {
+        vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
+        vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
+        vec3 H = normalize(view_dir + light_to_cluster_dir);
+
+        float H_dot_C = dot(H, normal_cone.cluster_normal);
+        float term = H_dot_C * normal_cone.cos_threshold + normal_cone.sin_threshold * sqrt(1.0 - H_dot_C * H_dot_C);
+        float max_N_dot_H = max(1.0, term); // Clamp to 1.0 if inside cone
+
+        max_dot = max(max_dot, dot(H, normal_cone.cluster_normal));
+        max_dot = max(max_dot, max_N_dot_H);
+        if (max_dot > specular_tau) break;  // Early exit
+    }
+
+    specular_passed = max_dot > specular_tau;
+#endif
+
+
+// DIFFUSE:
+    
+    bool diffuse_passed = false;
+    // Early reject if not inside AABB of light diffuse emission
+    if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
+    {
+        // diffuse_passed = true;
+        // Tight bounding sphere test:  (Increases compute time but better overall performance)
+        diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+    }
+
+    uint result = 0u;
+    if (diffuse_passed)  result |= 0x1u;
+    if (specular_passed) result |= 0x2u;
+    
+    return result;
+}
+#endif
 
 void
 main()

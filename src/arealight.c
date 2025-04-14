@@ -184,19 +184,19 @@ calculate_area_light_influence_radius(AreaLight* al, float area, float min_perce
 {
     // LTC Diffuse is lambertian, this finds the influence radius
     // of the most reflective line from the polygon which are
-    // shading locations in the center line of the polygon along its normal
+    // shading locations in the centre line of the polygon along its normal
     // with the shading locations surface normal directly facing the polygon normal.
 
-    // 1. Use RAW RGB sum without averaging (matches your shading math)
+    // 1. Total radiant flux * area gives a metric that scales properly with area light size
     float flux = (al->color_rgb_intensity_a[0] + 
         al->color_rgb_intensity_a[1] + 
         al->color_rgb_intensity_a[2]) * 
         al->color_rgb_intensity_a[3] * area;
 
-    // 2. Art more than a science adjustment factor
+    // 2. Appropriate adjustment factor found through testing
     float effective_flux = flux * 4.4f;
 
-    // 3. Solve for radius in Hemispherical irradiance falloff: E = Φ / (2πr²)
+    // 3. Solve for radius in Hemispherical irradiance falloff: E = flux / (2*PI*r*r)
     return sqrt(effective_flux / (2.0f * M_PI * min_perceivable));
 }
 #if 0  // OLD

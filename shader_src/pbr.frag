@@ -161,56 +161,6 @@ pbr_metallic_roughness_brdf(vec4 base_color, float metallic, float roughness, ve
     return material;
 }
 
-
-// OLD: Used to think clipping was necessary but it's accounted form with a second texture fetched form factor
-// The available area lights implementation only uses quadrilaterals and manually checks every edge case
-// Hence a general algorithm was needed to perform clipping for any n-gon => Sutherland-Hodgman algorithm
-/*
-Why is Sutherland-Hodgman algorithm acceptable?
-- It works with clipping non-convex polygons
-- We only want one polygon returned, overlapping edges is okay for rendering (not for shadows as per the wiki) and we won't input crazy polygons anyway.
-- Our 'clipping polygon' is simply the z>=0 half space, which means our inner loop has only one edge check. Simple and efficient.
-*/
-// void
-// clip_polygon_to_hemisphere(vec4 points[MAX_UNCLIPPED_NGON], int in_n, out vec3 outpoints[MAX_NGON], out int out_n)
-// {
-//     // Run through the Sutherland–Hodgman algorithm to clip to the half-space z >= 0.0
-//     out_n = 0;
-
-//     for (int i = 0; i < in_n; ++i)
-//     {
-//         // int j = (i + 1) % in_n;
-//         int j = i + 1;
-//         if (j == in_n)
-//         {
-//             j = 0;
-//         }
-//         vec3 current = points[i].xyz;
-//         vec3 next = points[j].xyz;
-
-//         bool current_inside = current.z >= 0.0;
-//         bool next_inside = next.z >= 0.0;
-
-//         // 4 cases (including nothing)
-//         if (current_inside && next_inside)
-//         {
-//             outpoints[out_n++] = next;
-//         }
-//         else if (current_inside != next_inside)
-//         {
-//             // intersecting_point = p1 + t*(p2-p1) = (x,y,0)^T implies t = z1 / (z1 - z2))
-//             float t = current.z / (current.z - next.z);
-//             vec3 intersect = mix(current, next, t);
-//             outpoints[out_n++] = intersect;
-
-//             if (next_inside)
-//             {
-//                 outpoints[out_n++] = next;
-//             }
-//         }
-//     }
-// }
-
 vec3
 integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
 {
@@ -250,38 +200,11 @@ integrate_lambertian_hemisphere(vec3 points[MAX_UNCLIPPED_NGON], int n)
     return vsum;
 }
 
-// vec3
-// integrate_edge_sector_vec_diffuse(vec3 point_i, vec3 point_j)
-// {
-//     // Cheaper quadratic good enough for diffuse
-//     float x = dot(point_i, point_j);
-//     float y = abs(x);
-//     float a = 5.42031 + (3.12829 + 0.0902326 * y) * y;
-//     float b = 3.45068 + (4.18814 + y) * y;
-//     float theta_sintheta = a / b;
-//     if (a < 0.0)
-//     {
-//         theta_sintheta = M_PI*inversesqrt(1.0 - x*x) - theta_sintheta;
-//     }
-//     return cross(point_i, point_j) * theta_sintheta;
-// }
-
-// vec3
-// integrate_lambertian_hemisphere_diffuse(vec3 points[MAX_UNCLIPPED_NGON], int n)
-// {
-//     vec3 vsum = integrate_edge_sector_vec_diffuse(points[n-1], points[0]);  // Start with the wrap around pair (n-1, 0)
-//     for (int i = 0; i < n-1; ++i)
-//     {
-//         vsum += integrate_edge_sector_vec_diffuse(points[i], points[i+1]);
-//     }
-//     return vsum;
-// }
-
 /*
 N := fragment normal vector
 V := fragment to camera vector
 P := fragment viewspace position
-Minv := The transformation from a clamped cosine to the linearly transformed cosine
+Minv := The transformation from an LTC to the clamped cosine
 */
 vec3
 LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIPPED_NGON], int viewspace_points_n, bool double_sided)
@@ -289,12 +212,6 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     #ifdef COUNT_LIGHT_OPS
     atomicCounterIncrement(light_ops_atomic_counter_buffer);
     #endif  // COUNT_LIGHT_OPS
-    
-    // Construct tangent space around shading location of orthonormal basis vectors x,y,z=T1,T2,N
-    vec3 T1 = normalize(V - N * dot(V, N));
-    vec3 T2 = cross(N, T1);
-
-    Minv = Minv * transpose(mat3(T1, T2, N));  // Move LTC domain change matrix into the tangent space.
     
     // Early exit if fragment is behind polygon
     vec3 dir = viewspace_points[0].xyz - P;
@@ -305,14 +222,18 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
         return vec3(0.0);
     }
 
-    
+    // Construct tangent space around shading location of orthonormal basis vectors x,y,z=T1,T2,N
+    vec3 T1 = normalize(V - N * dot(V, N));
+    vec3 T2 = cross(N, T1);
+    Minv = Minv * transpose(mat3(T1, T2, N));  // Move LTC domain change matrix into the tangent space.
+
     vec3 points_o[MAX_UNCLIPPED_NGON];  // P_o in the paper
 
     // Move polygon into tangent space (i.e. transform polygon into space where we apply clamped cosine)
     for (int i = 0; i < viewspace_points_n; ++i)  // If i only used quad area lights I could unroll this but I'm not
     {
-        viewspace_points[i].xyz = Minv * (viewspace_points[i].xyz - P);  // - P makes polygon relative to shading location
-        points_o[i] = normalize(viewspace_points[i].xyz);  // As mentioned, normalization technically means LTC are not linear
+        // Normalization technically means LTCs are not linear
+        points_o[i] = normalize(Minv * (viewspace_points[i].xyz - P));  // - P makes polygon relative to shading location
     }
 
     int n = viewspace_points_n;
@@ -337,38 +258,79 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     return Lo_i;
 }
 
-// vec3
-// LTC_evaluate_diffuse(vec3 N, vec3 V, vec3 P, vec4 viewspace_points[MAX_UNCLIPPED_NGON], int viewspace_points_n, bool double_sided)
-// {
-//     #ifdef COUNT_LIGHT_OPS
-//     atomicCounterIncrement(light_ops_atomic_counter_buffer);
-//     #endif  // COUNT_LIGHT_OPS
+#if 0  // Couldn't get diffuse approximation to work, it wouldn't be much faster anyway...
+vec3
+integrate_edge_sector_vec_diffuse(vec3 point_i, vec3 point_j)
+{
+    // Cheaper quadratic good enough for diffuse
+    float x = dot(point_i, point_j);
+    float y = abs(x);
+    float theta_sintheta = 1.5708 + (-0.879406 + 0.308609 * y) * y;
+    if (x < 0.0)
+    {
+        theta_sintheta = M_PI * inversesqrt(1.0 - x*x) - theta_sintheta;
+    }
+    return cross(point_i, point_j) * theta_sintheta;
+}
 
-//     // No transformation, and using slightly faster quadratic approximation for arccos
-//     vec3 points_o[MAX_UNCLIPPED_NGON];
-//     for (int i = 0; i < viewspace_points_n; ++i)
-//     {
-//         viewspace_points[i].xyz = viewspace_points[i].xyz - P;  // <- Applying identity matrix
-//         points_o[i] = normalize(viewspace_points[i].xyz);
-//     }
+vec3
+integrate_lambertian_hemisphere_diffuse(vec3 points[MAX_UNCLIPPED_NGON], int n)
+{
+    vec3 vsum = integrate_edge_sector_vec_diffuse(points[n-1], points[0]);  // Start with the wrap around pair (n-1, 0)
+    for (int i = 0; i < n-1; ++i)
+    {
+        vsum += integrate_edge_sector_vec_diffuse(points[i], points[i+1]);
+    }
+    return vsum;
+}
 
-//     // Early exit if fragment is behind polygon
-//     vec3 dir = viewspace_points[0].xyz - P;
-//     vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
-//     bool behind = dot(dir, light_normal) < 0.;
-//     if (!behind && !double_sided)
-//     {
-//         return vec3(0.0);
-//     }
+vec3
+LTC_evaluate_diffuse(vec3 N, vec3 V, vec3 P, vec4 viewspace_points[MAX_UNCLIPPED_NGON], int viewspace_points_n, bool double_sided)
+{
+    #ifdef COUNT_LIGHT_OPS
+    atomicCounterIncrement(light_ops_atomic_counter_buffer);
+    #endif  // COUNT_LIGHT_OPS
 
-//     vec3 vsum = integrate_lambertian_hemisphere_diffuse(points_o, viewspace_points_n);
-//     float len = length(vsum);
-//     float sum = len;
+    // Early exit if fragment is behind polygon
+    vec3 dir = viewspace_points[0].xyz - P;
+    vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
+    bool behind = dot(dir, light_normal) < 0.;
+    if (!behind && !double_sided)
+    {
+        return vec3(0.0);
+    }
 
-//     // Outgoing radiance from fragment from the polygon
-//     vec3 Lo_i = vec3(sum);
-//     return Lo_i;
-// }
+    // Minv for this one is just identity in local coordinate system
+    vec3 T1 = normalize(V - N * dot(V, N));
+    vec3 T2 = cross(N, T1);
+    mat3 Minv = transpose(mat3(T1, T2, N));  // Move LTC domain change matrix into the tangent space.
+
+    // transformation, and using slightly faster quadratic approximation for arccos
+    vec3 points_o[MAX_UNCLIPPED_NGON];
+    for (int i = 0; i < viewspace_points_n; ++i)
+    {
+        points_o[i] = normalize(Minv * (viewspace_points[i].xyz - P));
+    }
+    vec3 vsum = integrate_lambertian_hemisphere_diffuse(points_o, viewspace_points_n);
+    float len = length(vsum);
+    float z = vsum.z / len;
+    if (behind)
+    {
+        z = -z;
+    }
+    
+    vec2 uv = vec2(z * 0.5 + 0.5, len);  // Move from range [-1,1] to [0, 1]
+    uv = uv * LUT_SCALE + LUT_BIAS;
+
+    // Fetch horizon clipped norm of the transformed BRDF me thinks
+    float horizon_clipped_scale = texture(LTC2_texture, uv).w;
+    float sum = len * horizon_clipped_scale;
+
+    // Outgoing radiance from fragment from the polygon
+    vec3 Lo_i = vec3(sum);
+    return Lo_i;
+}
+#endif
 
 void
 main()
@@ -433,6 +395,7 @@ main()
 
     uint num_point_lights = clusters[tile_index].point_count;
     uint num_area_lights = clusters[tile_index].area_count;
+    // uint num_area_lights = min(clusters[tile_index].area_count, 16);  // Maybe if we sorted lights we could limit near clusters to a finite number of important lights
 
     // FUTURE TODO?:    
     // if (tile_z == grid_size.z - 1)
@@ -573,7 +536,7 @@ main()
     float amount_red = float(num_point_lights/15.0);
     // float amount_red = float(num_area_lights);
     // float amount_blue = float(num_area_lights/40.0);
-    float amount_blue = float(num_area_lights/30.0);
+    float amount_blue = float(num_area_lights/5.0);
     float amount_green = 0.2;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);

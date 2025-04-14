@@ -832,7 +832,9 @@ typedef struct Program
 
     // Time query objects
     u32 compute_time_query;
+    u32 shading_time_query;
     u64 compute_time_last_frame;
+    u64 shading_time_last_frame;
 
     // Dynamically add/change point lights in scene here
     DynamicArray point_lights;
@@ -1711,7 +1713,18 @@ draw_gltf_scene(Scene* scene)
 
         glEndQuery(GL_TIME_ELAPSED);
     }
-    
+
+    // Start shading timer
+    if (program.shading_time_query && program.frame_counter > 0)
+    {
+        int available = 0;
+        glGetQueryObjectiv(program.shading_time_query, GL_QUERY_RESULT_AVAILABLE, &available);
+        if (available)
+        {
+            glGetQueryObjectui64v(program.shading_time_query, GL_QUERY_RESULT, &program.shading_time_last_frame);
+        }
+    }
+    glBeginQuery(GL_TIME_ELAPSED, program.shading_time_query);
 
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -1792,6 +1805,8 @@ draw_gltf_scene(Scene* scene)
     // Render area lights
     glDisable(GL_CULL_FACE);
     render_area_lights(num_area_lights, program.area_lights.data_buffer);
+
+    glEndQuery(GL_TIME_ELAPSED);  // End of shading time
 
     free_array(&opaque_draw_calls);
     free_array(&transparent_draw_calls);
@@ -2190,9 +2205,9 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         out_loaded_scene->sun_color[2] = 1.0f;
     }
 
-    // printf("TEMP: Deleting point lights for now\n");
-    // free_array(&program.point_lights);
-    // program.point_lights = create_array(1 * sizeof(PointLight));
+    printf("TEMP: Deleting point lights for now\n");
+    free_array(&program.point_lights);
+    program.point_lights = create_array(1 * sizeof(PointLight));
 
     init_global_renderer_buffers();
 }
@@ -2951,7 +2966,8 @@ main(int argc, char** argv)
     }
 
     init_global_renderer_buffers();
-    glGenQueries(1, &program.compute_time_query);  // Make time query object
+    glGenQueries(1, &program.compute_time_query);
+    glGenQueries(1, &program.shading_time_query);
 
     // Compiler shaders
     {
@@ -3014,25 +3030,30 @@ main(int argc, char** argv)
         }
 
         // Calculate average fps per half second
-        static double displayed_fps = 0.0f;
-        static double displayed_compute_time = 0.0f;
+        static double displayed_fps = 0.0;
+        static double displayed_compute_time = 0.0;
+        static double displayed_shading_time = 0.0;
         {
             static int num_frames = 0;
-            static double num_seconds = 0.0f;
+            static double num_seconds = 0.0;
             num_frames++;
             num_seconds += (double)program.dt;
 
-            static double compute_total = 0.0f;
+            static double compute_total = 0.0;
             compute_total += program.compute_time_last_frame / 1e6;
+            
+            static double shading_total = 0.0;
+            shading_total += program.shading_time_last_frame / 1e6;
 
-            if (num_seconds > 0.5f)
+            if (num_seconds > 0.5)
             {
                 displayed_fps = (double)num_frames / num_seconds;
                 displayed_compute_time = compute_total / (double)num_frames;
-                displayed_compute_time = program.compute_time_last_frame / 1e6;
+                displayed_shading_time = shading_total / (double)num_frames;
                 num_frames = 0;
-                num_seconds = 0.0f;
-                compute_total = 0.0f;
+                num_seconds = 0.0;
+                compute_total = 0.0;
+                shading_total = 0.0;
             }
         }
 
@@ -3093,7 +3114,7 @@ main(int argc, char** argv)
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
             
             // Display compute time query in top left:
-            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 95), NK_WINDOW_NO_SCROLLBAR))
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 200, 125), NK_WINDOW_NO_SCROLLBAR))
             {
                 char fps_str[64];
                 snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
@@ -3104,6 +3125,11 @@ main(int argc, char** argv)
                 snprintf(time_str, sizeof(time_str), "Compute Time: %.2f ms", displayed_compute_time);
                 nk_layout_row_dynamic(program.gui_context, 20, 1);
                 nk_label(program.gui_context, time_str, NK_TEXT_LEFT);
+                
+                char time2_str[64];
+                snprintf(time2_str, sizeof(time2_str), "Shading Time: %.2f ms", displayed_shading_time);
+                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_label(program.gui_context, time2_str, NK_TEXT_LEFT);
 
                 char grid_str[64];
                 snprintf(grid_str, sizeof(grid_str), "Cluster grid (%d,%d,%d, %d)", CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z, CLUSTER_NORMALS_COUNT);
