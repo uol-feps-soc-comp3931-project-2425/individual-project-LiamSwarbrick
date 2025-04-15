@@ -864,7 +864,6 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
     glNamedBufferData(program.cluster_grid_ssbo, cluster_size * NUM_CLUSTERS, NULL, GL_STATIC_COPY);
     glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
 
-    // TODO: Generate cube maps for cluster indexing based on quantized normals
 #if CLUSTER_NORMALS_COUNT == 1
     printf("Cluster normals disabled: Generating dummy cubemap anyway.\n");
     int n = 1;  // This generates the 1x1x1 cube normal map, even though it isn't used
@@ -876,21 +875,22 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
     float n_f32 = (float)n;
 
     u32 cubemap_face_size = n*n * 3*sizeof(float);  // nxn texture of vec3s
-    u32 index_cubemap_face_size = n*n * sizeof(u32);
     float* cubemap_texture_data = malloc(6 * cubemap_face_size);
-        float* cubemap_posx = (float*)((u8*)cubemap_texture_data + 0*cubemap_face_size);
-        float* cubemap_negx = (float*)((u8*)cubemap_texture_data + 1*cubemap_face_size);
-        float* cubemap_posy = (float*)((u8*)cubemap_texture_data + 2*cubemap_face_size);
-        float* cubemap_negy = (float*)((u8*)cubemap_texture_data + 3*cubemap_face_size); 
-        float* cubemap_posz = (float*)((u8*)cubemap_texture_data + 4*cubemap_face_size);
-        float* cubemap_negz = (float*)((u8*)cubemap_texture_data + 5*cubemap_face_size);
+    float* cubemap_posx = (float*)((u8*)cubemap_texture_data + 0*cubemap_face_size);
+    float* cubemap_negx = (float*)((u8*)cubemap_texture_data + 1*cubemap_face_size);
+    float* cubemap_posy = (float*)((u8*)cubemap_texture_data + 2*cubemap_face_size);
+    float* cubemap_negy = (float*)((u8*)cubemap_texture_data + 3*cubemap_face_size); 
+    float* cubemap_posz = (float*)((u8*)cubemap_texture_data + 4*cubemap_face_size);
+    float* cubemap_negz = (float*)((u8*)cubemap_texture_data + 5*cubemap_face_size);
+
+    u32 index_cubemap_face_size = n*n * sizeof(u32);
     u32* index_cubemap_data = malloc(6 * index_cubemap_face_size);
-        u32* index_cubemap_posx = (u32*)((u8*)index_cubemap_data + 0*index_cubemap_face_size);
-        u32* index_cubemap_negx = (u32*)((u8*)index_cubemap_data + 1*index_cubemap_face_size);
-        u32* index_cubemap_posy = (u32*)((u8*)index_cubemap_data + 2*index_cubemap_face_size);
-        u32* index_cubemap_negy = (u32*)((u8*)index_cubemap_data + 3*index_cubemap_face_size); 
-        u32* index_cubemap_posz = (u32*)((u8*)index_cubemap_data + 4*index_cubemap_face_size);
-        u32* index_cubemap_negz = (u32*)((u8*)index_cubemap_data + 5*index_cubemap_face_size);
+    u32* index_cubemap_posx = (u32*)((u8*)index_cubemap_data + 0*index_cubemap_face_size);
+    u32* index_cubemap_negx = (u32*)((u8*)index_cubemap_data + 1*index_cubemap_face_size);
+    u32* index_cubemap_posy = (u32*)((u8*)index_cubemap_data + 2*index_cubemap_face_size);
+    u32* index_cubemap_negy = (u32*)((u8*)index_cubemap_data + 3*index_cubemap_face_size); 
+    u32* index_cubemap_posz = (u32*)((u8*)index_cubemap_data + 4*index_cubemap_face_size);
+    u32* index_cubemap_negz = (u32*)((u8*)index_cubemap_data + 5*index_cubemap_face_size);
 
     for (int v = 0; v < n; ++v)
     {
@@ -911,25 +911,34 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
             
             // For u,v mappings see diagram here https://www.khronos.org/opengl/wiki/File:CubeMapAxes.png
             u32 vector_index = 3 * (n*v + u);
-            f32 invsqrt = sqrtf(1.0f + u_val*u_val + v_val*v_val);  // Normalize to move from unit cube to unit sphere
+            f32 invsqrt = 1.0f / sqrtf(1.0f + u_val*u_val + v_val*v_val);  // Normalize to move from unit cube to unit sphere
             
             cubemap_posx[vector_index + 0] =  1.0f  * invsqrt;
             cubemap_posx[vector_index + 1] = -v_val * invsqrt;
+            // cubemap_posx[vector_index + 1] = v_val * invsqrt;  // should it be flipped?
             cubemap_posx[vector_index + 2] = -u_val * invsqrt;
+
             cubemap_negx[vector_index + 0] = -1.0f  * invsqrt;
             cubemap_negx[vector_index + 1] = -v_val * invsqrt;
+            // cubemap_negx[vector_index + 1] = v_val * invsqrt;
             cubemap_negx[vector_index + 2] =  u_val * invsqrt;
+
             cubemap_posy[vector_index + 0] =  u_val * invsqrt;
             cubemap_posy[vector_index + 1] =  1.0f  * invsqrt;
             cubemap_posy[vector_index + 2] =  v_val * invsqrt;
+
             cubemap_negy[vector_index + 0] =  u_val * invsqrt;
             cubemap_negy[vector_index + 1] = -1.0f  * invsqrt;
             cubemap_negy[vector_index + 2] = -v_val * invsqrt;
+
             cubemap_posz[vector_index + 0] =  u_val * invsqrt;
             cubemap_posz[vector_index + 1] = -v_val * invsqrt;
+            // cubemap_posz[vector_index + 1] = v_val * invsqrt;
             cubemap_posz[vector_index + 2] =  1.0f  * invsqrt;
+
             cubemap_negz[vector_index + 0] = -u_val * invsqrt;
             cubemap_negz[vector_index + 1] = -v_val * invsqrt;
+            // cubemap_negz[vector_index + 1] = v_val * invsqrt;
             cubemap_negz[vector_index + 2] = -1.0f  * invsqrt;
 
             // Index = faceid*n*n + v*n + u
@@ -951,10 +960,18 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
     }
 
     printf("Cubemap Normal Data:\n");
+    // for (int i = 0; i < 6*n*n; ++i)
+    // {
+    //     vec3 v; glm_vec3_copy(&cubemap_texture_data[3*i], v);
+    //     printf("%d : %d : %f, %f, %f\n", i, index_cubemap_data[i], v[0], v[1], v[2]);
+    // }
     for (int i = 0; i < 6*n*n; ++i)
     {
-        vec3 v; glm_vec3_copy(&cubemap_texture_data[3*i], v);
-        printf("%d : %d : %f, %f, %f\n", i, index_cubemap_data[i], v[0], v[1], v[2]);
+        vec3 normal;
+        glm_vec3_copy(&cubemap_texture_data[3*i], normal);
+        glm_vec3_normalize(normal); // Ensure all vectors are unit length
+        glm_vec3_copy(normal, &cubemap_texture_data[3*i]);
+        printf("%d : %d : %f, %f, %f\n", i, index_cubemap_data[i], normal[0], normal[1], normal[2]);
     }
     
     // Cubemap for quantizing normals
@@ -2488,10 +2505,10 @@ update_free_camera(FreeCamera* cam)
             int up = program.keydown_up;
             int down = program.keydown_down;
 
-            f32 speed = 5.0f;
+            f32 speed = 7.0f;
             if (program.keydown_sprint)
             {
-                speed *= 15.0f;
+                speed *= 10.0f;
             }
 
             f32 pos_increment = speed * program.dt;
@@ -3141,41 +3158,44 @@ main(int argc, char** argv)
             int nk_flags = 0;  // NK_WINDOW_BORDER|NK_WINDOW_TITLE|NK_WINDOW_MINIMIZABLE|NK_WINDOW_MOVABLE|NK_WINDOW_SCALABLE
             
             // Display compute time query in top left:
-            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 250, 150), NK_WINDOW_NO_SCROLLBAR))
+            if (nk_begin(program.gui_context, "Performance Stats", nk_rect(10, 10, 270, 100), NK_WINDOW_NO_SCROLLBAR))
             {
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
+                nk_label(program.gui_context, program.driver_name, NK_TEXT_LEFT);
+
                 char fps_str[64];
                 snprintf(fps_str, sizeof(fps_str), "%.2f fps", displayed_fps);
-                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
                 nk_label(program.gui_context, fps_str, NK_TEXT_LEFT);
                 
                 char time_str[64];
                 snprintf(time_str, sizeof(time_str), "Arealight Precomp: %f ms", displayed_precomp_time);
-                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
                 nk_label(program.gui_context, time_str, NK_TEXT_LEFT);
 
                 char time1_str[64];
                 snprintf(time1_str, sizeof(time1_str), "Compute Time: %.2f ms", displayed_compute_time);
-                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
                 nk_label(program.gui_context, time1_str, NK_TEXT_LEFT);
                 
                 char time2_str[64];
                 snprintf(time2_str, sizeof(time2_str), "Shading Time: %.2f ms", displayed_shading_time);
-                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
                 nk_label(program.gui_context, time2_str, NK_TEXT_LEFT);
 
                 char grid_str[64];
                 snprintf(grid_str, sizeof(grid_str), "Cluster grid (%d,%d,%d, %d)", CLUSTER_GRID_SIZE_X, CLUSTER_GRID_SIZE_Y, CLUSTER_GRID_SIZE_Z, CLUSTER_NORMALS_COUNT);
-                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
                 nk_label(program.gui_context, grid_str, NK_TEXT_LEFT);
 
                 char num_area_lights_str[64];
                 snprintf(num_area_lights_str, sizeof(num_area_lights_str), "Num Area lights: %d", (int)array_length(&program.area_lights, sizeof(AreaLight)));
-                nk_layout_row_dynamic(program.gui_context, 20, 1);
+                nk_layout_row_dynamic(program.gui_context, 10, 1);
                 nk_label(program.gui_context, num_area_lights_str, NK_TEXT_LEFT);
             }
             nk_end(program.gui_context);
 
-            if (nk_begin(program.gui_context, "Scene - Editor", nk_rect(0, program.h-120, program.w, 120), nk_flags))
+            if (nk_begin(program.gui_context, "Scene - Editor", nk_rect(0, program.h-110, program.w, 110), nk_flags))
             {
                 {
                     nk_layout_row_dynamic(program.gui_context, 0, 3);

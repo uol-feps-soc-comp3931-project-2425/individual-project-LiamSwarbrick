@@ -84,6 +84,43 @@ struct NormalCone
     vec3 cluster_normal;
 };
 
+struct Cone
+{
+    vec3 axis;
+    float angle;  // Half angle
+};
+
+Cone
+compute_conservative_specular_cone(vec3 light_normal, vec3 light_center, float light_radius, vec3 cluster_normal)
+{
+    Cone cone;
+    
+    // 1. Assume worst-case roughness (α ≈ 0.5, common for noticeable specular)
+    const float MAX_SPECULAR_ANGLE = 0.0;//radians(45.0); // ~α=0.5 GGX lobe
+    
+    // 2. Account for light angular size
+    // float light_angular_radius = atan(light_radius / max(length(light_center), 1e-5));
+    float distance_to_light = length(light_center);
+    float solid_angle = light_radius*light_radius / (distance_to_light*distance_to_light);
+    float angular_size = sqrt(solid_angle); // Approximate angular radius in radians
+    
+    // 3. Dominant reflection direction for cluster
+    cone.axis = reflect(light_normal, cluster_normal);
+    
+    // 4. Conservative combined angle
+    cone.angle = MAX_SPECULAR_ANGLE + angular_size;
+    
+    return cone;
+}
+
+bool
+specular_intersects(Cone light_cone, Cone cluster_cone, vec3 light_to_cluster)
+{
+    vec3 L = normalize(light_to_cluster);
+    float total_angle = light_cone.angle + cluster_cone.angle;
+    return dot(light_cone.axis, L) > cos(total_angle);
+}
+
 bool
 sphere_aabb_intersection(vec3 center, float radius, vec3 aabb_min, vec3 aabb_max)
 {
@@ -167,11 +204,11 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     // Half space rejection for single sided area lights
     if (area_lights[i].is_double_sided == 0)
     {
-        vec3 p0 = area_lights[i].points_viewspace[0].xyz;
+            vec3 p0 = area_lights[i].points_viewspace[0].xyz;
         vec3 p1 = area_lights[i].points_viewspace[1].xyz;
         vec3 p2 = area_lights[i].points_viewspace[2].xyz;
         vec3 light_normal = cross(p1 - p0, p2 - p0);
-
+        
         // Fast center test before exact check
         if (dot(cluster_center - p0, light_normal) < 0)
         {
@@ -188,28 +225,39 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     bool diffuse_passed = false;
     if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
     {
-        #if CLUSTER_NORMALS_COUNT == 1
-            diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        #else
-            // Normal based diffuse culling
-            vec3 light_dir = normalize(sphere.xyz - cluster_center);
-            float cos_theta = dot(nc.cluster_normal, light_dir);
-            diffuse_passed = cos_theta > (0.2 - nc.half_angle);
-        #endif
+        diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        // #if CLUSTER_NORMALS_COUNT == 1
+        //     diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        // #else
+        //     // Normal based diffuse culling
+        //     vec3 light_dir = normalize(sphere.xyz - cluster_center);
+        //     float cos_theta = dot(nc.cluster_normal, light_dir);
+        //     diffuse_passed = cos_theta > (0.2 - nc.half_angle);
+        // #endif
     }
 
     // Specular test
     bool specular_passed = false;
-    float distance_to_light = distance(cluster_center, sphere.xyz);
-    float effective_distance = max(distance_to_light - sphere.w, 0.0);
-    float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
-    float alpha = area_lights[i].color_rgb_intensity_a.a;
-    float raw_intensity = alpha * attenuation;
-    float scaled_intensity = raw_intensity / (raw_intensity + param_intensity_saturation);
-    // float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
-    float specular_tau = exp2(log2(param_min_intensity / (scaled_intensity + 1e-6)) * (1.0/param_roughness));
 
+    // Cone cluster_cone;
+    // cluster_cone.axis = nc.cluster_normal;
+    // cluster_cone.angle = nc.half_angle;
+
+    // Cone light_cone = compute_conservative_specular_cone(light_normal, sphere.xyz, sphere.w, cluster_cone.axis);
+    // specular_passed = specular_intersects(light_cone, cluster_cone, furthest_point - sphere.xyz);
+
+    // Finally include the specular picked up by the difuse term when normal clustering is disabled
     #if CLUSTER_NORMALS_COUNT == 1
+        float distance_to_light = distance(cluster_center, sphere.xyz);
+        float effective_distance = max(distance_to_light - sphere.w, 0.0);
+        float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
+        float alpha = area_lights[i].color_rgb_intensity_a.a;
+        float raw_intensity = alpha * attenuation;
+        float scaled_intensity = raw_intensity / (raw_intensity + param_intensity_saturation);
+        // float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
+        float specular_tau = exp2(log2(param_min_intensity / (scaled_intensity + 1e-6)) * (1.0/param_roughness));
+
+
         // Optimized unified specular test for non-clustered normals
         vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
         float light_radius = area_lights[i].sphere_of_influence_center_xyz_radius_w.w;
@@ -230,30 +278,9 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
         float angular_tolerance = mix(0.05, 0.5, param_roughness); // Wider tolerance for rough mats
         specular_passed = (NdotH > (specular_tau - angular_tolerance)) && 
                         (raw_intensity > param_min_intensity);
+
     #else
-        // float max_dot = 0.0;
-        // for (int vertex = 0; vertex < area_lights[i].n; ++vertex)
-        // {
-        //     vec3 light_vertex_pos = area_lights[i].points_viewspace[vertex].xyz;
-        //     vec3 light_to_cluster_dir = normalize(light_vertex_pos - cluster_center);
-        //     vec3 H = normalize(view_dir + light_to_cluster_dir);
-
-        //     float H_dot_C = dot(H, nc.cluster_normal);
-        //     float term = H_dot_C * nc.cos_threshold + nc.sin_threshold * sqrt(1.0 - H_dot_C * H_dot_C);
-        //     float max_N_dot_H = max(1.0, term); // Clamp to 1.0 if inside cone
-
-        //     max_dot = max(max_dot, dot(H, nc.cluster_normal));
-        //     max_dot = max(max_dot, max_N_dot_H);
-        //     if (max_dot > specular_tau) break;  // Early exit
-        // }
-
-        // specular_passed = max_dot > specular_tau;
-
-        // This method doesn't work
-        vec3 H = normalize(view_dir + normalize(sphere.xyz - cluster_center));
-        float NdotH = dot(H, nc.cluster_normal);
-        float cone_adjust = 1.0 / (1.0 + param_roughness * nc.half_angle);
-        specular_passed = NdotH > (specular_tau * cone_adjust);
+        specular_passed = specular_passed || diffuse_passed;
     #endif
 
     // Seperate diffuse and specular light culling
@@ -288,16 +315,25 @@ main()
     uint normal_bin = combined_z % CLUSTER_NORMALS_COUNT;
 
     NormalCone normal_cone;
-    float n = sqrt(CLUSTER_NORMALS_COUNT/6);  // since CLUSTER_NORMALS_COUNT= 6n^2
-    normal_cone.half_angle = atan(sqrt(2.0) / n);
-    // normal_cone.half_angle = atan(1.0 / n);
+    #if CLUSTER_NORMALS_COUNT > 1
+        float n = sqrt(CLUSTER_NORMALS_COUNT/6);  // since CLUSTER_NORMALS_COUNT= 6n^2
+        float h = 1.0 / n;
+        if (int(n) % 2 == 0)
+        {
+            normal_cone.half_angle = acos(dot(normalize(vec3(h, 1.0, h)), normalize(vec3(2.0*h, 1.0, 2.0*h))));
+        }
+        else
+        {
+            normal_cone.half_angle = acos(normalize(vec3(h, 1.0, h).y));  // NOTE: vec.y = dot(vec, vec3(0,1,0))
+        }
+        normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];
+    #else
+        // When CLUSTER_NORMALS_COUNT == 1, the normal cone will be optimized for the floor
+        normal_cone.half_angle = 0.8*M_PI;
+        normal_cone.cluster_normal = vec3(0.0, 1.0, 0.0);
+    #endif
     normal_cone.cos_threshold = cos(normal_cone.half_angle);
     normal_cone.sin_threshold = sin(normal_cone.half_angle);
-    normal_cone.cluster_normal = texture(representative_normals_texture, normal_bin / float(textureSize(representative_normals_texture, 0))).rgb;//representative_normals[normal_bin];
-
-    // // Reinitialize counters to 0 before computing this frames cluster
-    // cluster.point_count = 0;
-    // cluster.area_count = 0;
 
     const uint max_point_lights = CLUSTER_MAX_LIGHTS/2;
     const uint max_area_lights = CLUSTER_MAX_LIGHTS/2;

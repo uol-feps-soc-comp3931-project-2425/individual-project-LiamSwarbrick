@@ -536,7 +536,7 @@ main()
     float amount_red = float(num_point_lights/15.0);
     // float amount_red = float(num_area_lights);
     // float amount_blue = float(num_area_lights/40.0);
-    float amount_blue = float(num_area_lights/5.0);
+    float amount_blue = float(num_area_lights/35.0);
     float amount_green = 0.2;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);
