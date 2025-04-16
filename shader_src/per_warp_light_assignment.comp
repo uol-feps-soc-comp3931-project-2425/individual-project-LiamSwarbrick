@@ -4,7 +4,7 @@
 
 // Different sizes yield similar performance results, Intel Iris likely prefers 512
 #ifdef INTEGRATED_GPU
-    #define LOCAL_SIZE 512
+    #define LOCAL_SIZE 128
 #else
     #define LOCAL_SIZE 32//64
 #endif
