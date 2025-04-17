@@ -155,7 +155,7 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-#define INTEGRATED_GPU
+// #define INTEGRATED_GPU
 #define ONE_CLUSTER_PER_WORKGROUP  // <-- Much better bruteforce performance
 #ifdef INTEGRATED_GPU
     #define CLUSTER_GRID_SIZE_X 16//32//8//32//32//16 

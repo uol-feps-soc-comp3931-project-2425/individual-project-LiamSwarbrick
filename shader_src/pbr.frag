@@ -519,8 +519,8 @@ main()
     // float hue = float(200 + (tile_index % 700)) / 1000.0;
     // float hue = float(000 + (tile_index % 700)) / 1000.0;
 #ifdef ENABLE_CLUSTERED_SHADING
-    // float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
-    float hue = 0.5;
+    float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
+    // float hue = 0.5;
 #else
     float hue = 0.5;
 #endif
@@ -533,11 +533,12 @@ main()
     // frag_color = vec4(pow(rgb, vec3(INV_GAMMA)), alpha);
     // frag_color = vec4(rgb, alpha);
 
-    float amount_red = float(num_point_lights/15.0);
+    float amount_red = float(num_area_lights);//float(num_point_lights/15.0);
     // float amount_red = float(num_area_lights);
     // float amount_blue = float(num_area_lights/40.0);
-    float amount_blue = float(num_area_lights/35.0);
-    float amount_green = 0.2;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
+    // float amount_blue = float(num_area_lights/35.0);
+    float amount_blue = float(0.0);
+    float amount_green = 0.0;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
     vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.2);
     frag_color = vec4(col, alpha);
