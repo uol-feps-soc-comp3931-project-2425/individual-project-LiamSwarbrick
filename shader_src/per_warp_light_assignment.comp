@@ -257,63 +257,60 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
     {
         diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        // #if CLUSTER_NORMALS_COUNT == 1
-        //     diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        // #else
-        //     // Normal based diffuse culling
-        //     vec3 light_dir = normalize(sphere.xyz - cluster_center);
-        //     float cos_theta = dot(nc.cluster_normal, light_dir);
-        //     diffuse_passed = cos_theta > (0.2 - nc.half_angle);
-        // #endif
+        #if CLUSTER_NORMALS_COUNT == 1
+            diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        #else
+            // Normal based diffuse culling
+            vec3 light_dir = normalize(sphere.xyz - cluster_center);
+            float cos_theta = dot(nc.cluster_normal, light_dir);
+            diffuse_passed = cos_theta > (0.2 - nc.half_angle);
+        #endif
     }
 
     // Specular test
     bool specular_passed = false;
 
-    // Finally include the specular picked up by the difuse term when normal clustering is disabled
     #if CLUSTER_NORMALS_COUNT == 1
-        float distance_to_light = distance(cluster_center, sphere.xyz);
-        float effective_distance = max(distance_to_light - sphere.w, 0.0);
-        float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
-        float alpha = area_lights[i].color_rgb_intensity_a.a;
-        float raw_intensity = alpha * attenuation;
-        float scaled_intensity = raw_intensity / (raw_intensity + param_intensity_saturation);
-        // float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
-        float specular_tau = exp2(log2(param_min_intensity / (scaled_intensity + 1e-6)) * (1.0/param_roughness));
+        #if 1
+        // Literally just double the bounding sphere test
+        specular_passed = sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        #else
+        // OLD METHOD COULDN'T GET WORKING GUD
+        // float distance_to_light = distance(cluster_center, sphere.xyz);
+        // float effective_distance = max(distance_to_light - sphere.w, 0.0);
+        // float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
+        // float alpha = area_lights[i].color_rgb_intensity_a.a;
+        // float raw_intensity = alpha * attenuation;
+        // float scaled_intensity = raw_intensity / (raw_intensity + param_intensity_saturation);
+        // // float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
+        // float specular_tau = exp2(log2(param_min_intensity / (raw_intensity + 1e-6)) * (1.0/param_roughness));
 
-
-        // Optimized unified specular test for non-clustered normals
-        vec3 light_center = area_lights[i].sphere_of_influence_center_xyz_radius_w.xyz;
-        float light_radius = area_lights[i].sphere_of_influence_center_xyz_radius_w.w;
+        // // 1. Conservative light-to-cluster vector
+        // vec3 light_to_cluster = cluster_center - sphere.xyz;
+        // float dist_to_light = length(light_to_cluster);
+        // vec3 light_dir = light_to_cluster / (dist_to_light + 1e-6);
         
-        // 1. Conservative light-to-cluster vector
-        vec3 light_to_cluster = cluster_center - light_center;
-        float dist_to_light = length(light_to_cluster);
-        vec3 light_dir = light_to_cluster / (dist_to_light + 1e-6);
+        // // 2. Find most significant light point (dominant specular contributor)
+        // float light_geo_radius = distance(p2, p0);
+        // vec3 dominant_point = sphere.xyz + light_geo_radius * reflect(-view_dir, light_dir);
         
-        // 2. Find most significant light point (dominant specular contributor)
-        vec3 dominant_point = light_center + light_radius * reflect(-view_dir, light_dir);
+        // // 3. Half-vector test with roughness adjustment
+        // vec3 H = normalize(view_dir + normalize(dominant_point - cluster_center));
+        // float NdotH = dot(view_dir, H); // Using view_dir as proxy for cluster normal
         
-        // 3. Half-vector test with roughness adjustment
-        vec3 H = normalize(view_dir + normalize(dominant_point - cluster_center));
-        float NdotH = dot(view_dir, H); // Using view_dir as proxy for cluster normal
-        
-        // 4. Roughness-adjusted threshold
-        float angular_tolerance = mix(0.05, 0.5, param_roughness); // Wider tolerance for rough mats
-        specular_passed = (NdotH > (specular_tau - angular_tolerance)) && 
-                        (raw_intensity > param_min_intensity);
-
+        // // 4. Roughness-adjusted threshold
+        // float angular_tolerance = mix(0.05, 0.5, param_roughness); // Wider tolerance for rough mats
+        // specular_passed = (NdotH > (specular_tau - angular_tolerance)) && 
+        //                 (raw_intensity > param_min_intensity);
+        #endif
     #else
-        // This isn't working yet, cones need a range too (maybe double diffuse or something) then use a BVH per normal cone
+        // This needs more work, cones need a range too (maybe double diffuse or something) then use a BVH per normal cone
         Cone cluster_cone;
         cluster_cone.axis = nc.cluster_normal;
         cluster_cone.angle = nc.half_angle;
 
-        // Cone light_cone = compute_conservative_specular_cone(light_normal, sphere.xyz, sphere.w, cluster_cone.axis);
         Cone light_cone = compute_conservative_specular_cone(cluster_center, cluster_cone, sphere.xyz, 0.5*distance(p0, p2), light_normal, radians(45));
         specular_passed = specular_visible(light_cone, view_dir) && sphere_aabb_intersection(sphere.xyz, 2.0 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        // specular_passed = specular_intersects(view_dir, light_cone, cluster_cone, furthest_point - sphere.xyz);// &&
-            // sphere_aabb_intersection(sphere.xyz, 2.0 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
     #endif
 
     // Seperate diffuse and specular light culling
