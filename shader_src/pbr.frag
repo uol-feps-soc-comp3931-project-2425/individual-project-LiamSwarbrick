@@ -508,9 +508,15 @@ main()
         sum_pl_radiance +
         sum_arealight_radiance +
         emissive + ambient;
-    // vec3 final_linear_color = specular*vec3(0.0, 1.0, 0.0) + diffuse*vec3(0.0, 0.0, 1.0);
 
-// NOTE: I still have the define TRANSPARENT_PASS for when I need to add OIT
+    // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
+    frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);
+
+
+    //
+    // Weird cluster visualisation code you can ignore:
+    // (it used to be SHOW_NORMALS but now it just shows how many lights in each cluster)
+    //
 
 #ifdef SHOW_NORMALS
     // frag_color = vec4(metallic_roughness.rgb, alpha);
@@ -518,12 +524,12 @@ main()
 
     // float hue = float(200 + (tile_index % 700)) / 1000.0;
     // float hue = float(000 + (tile_index % 700)) / 1000.0;
-#ifdef ENABLE_CLUSTERED_SHADING
-    float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
-    // float hue = 0.5;
-#else
-    float hue = 0.5;
-#endif
+    #ifdef ENABLE_CLUSTERED_SHADING
+        float hue = float(normal_index) / float(CLUSTER_NORMALS_COUNT);
+        // float hue = 0.5;
+    #else
+        float hue = 0.5;
+    #endif
 
     // float hue = float(200 + (tile_index % 700)) / 1000.0;
     float r = abs(hue * 6.0 - 3.0) - 1.0;
@@ -544,12 +550,5 @@ main()
     frag_color = vec4(col, alpha);
     // frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
     // frag_color.rgb = vec3(1.0 / (1.0 + 4.0 * metallic_roughness.b * metallic_roughness.b));
-#else
-    // Gamma correction: Radiance is linear space, we convert it to sRGB for the display.
-    frag_color = vec4(pow(final_linear_color, vec3(INV_GAMMA)), alpha);
 #endif
-
-
-    // final_linear_color = emissive.rgb;
-    // frag_color = vec4(light_radiance, alpha);
 }

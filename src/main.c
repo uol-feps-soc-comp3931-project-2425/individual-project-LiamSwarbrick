@@ -155,18 +155,18 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-// #define INTEGRATED_GPU
+#define INTEGRATED_GPU
 #define ONE_CLUSTER_PER_WORKGROUP  // <-- Much better bruteforce performance
 #ifdef INTEGRATED_GPU
-    #define CLUSTER_GRID_SIZE_X 16//32//8//32//32//16 
-    #define CLUSTER_GRID_SIZE_Y 9//18//8//32//32//9
-    #define CLUSTER_GRID_SIZE_Z 24//16//8//16//32
+    #define CLUSTER_GRID_SIZE_X 16//16//32//8//32//32//16 
+    #define CLUSTER_GRID_SIZE_Y 9//9//18//8//32//32//9
+    #define CLUSTER_GRID_SIZE_Z 24//24//16//8//16//32
 #else
     #define CLUSTER_GRID_SIZE_X 16//24
     #define CLUSTER_GRID_SIZE_Y 9//16
     #define CLUSTER_GRID_SIZE_Z 24//12//16
 #endif  // INTEGRATED_GPU
-#define CLUSTER_NORMALS_COUNT 1//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 24//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200
 
@@ -1723,9 +1723,9 @@ draw_gltf_scene(Scene* scene)
         // glProgramUniformMatrix4fv(light_assignment_shader, 0, 1, GL_FALSE, (f32*)camera->view_matrix);
         glProgramUniform1ui(light_assignment_shader, 1, num_point_lights);
         glProgramUniform1ui(light_assignment_shader, 2, num_area_lights);
-        glProgramUniform1f(light_assignment_shader, 3, scene->param_roughness);
-        glProgramUniform1f(light_assignment_shader, 4, scene->param_min_intensity);
-        glProgramUniform1f(light_assignment_shader, 5, scene->param_intensity_saturation);
+        // glProgramUniform1f(light_assignment_shader, 3, scene->param_roughness);
+        // glProgramUniform1f(light_assignment_shader, 4, scene->param_min_intensity);
+        // glProgramUniform1f(light_assignment_shader, 5, scene->param_intensity_saturation);
 
 
     #ifdef ONE_CLUSTER_PER_WORKGROUP

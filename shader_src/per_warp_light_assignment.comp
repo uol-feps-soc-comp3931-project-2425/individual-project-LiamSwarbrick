@@ -4,7 +4,7 @@
 
 // Different sizes yield similar performance results, Intel Iris likely prefers 512
 #ifdef INTEGRATED_GPU
-    #define LOCAL_SIZE 128
+    #define LOCAL_SIZE 32  // keep it small to stay below total allowed invocations
 #else
     #define LOCAL_SIZE 32//64
 #endif
@@ -16,8 +16,6 @@ struct PointLight
     vec4 color_rgb_intensity_a;
 };
 
-
-// #define MAX_UNCLIPPED_NGON 10
 struct AreaLight
 {
     vec4 color_rgb_intensity_a;
@@ -62,9 +60,9 @@ layout (std430, binding = 1) restrict buffer cluster_ssbo
 // layout (location = 0) uniform mat4 view_matrix;
 layout (location = 1) uniform uint num_point_lights;
 layout (location = 2) uniform uint num_area_lights;
-layout (location = 3) uniform float param_roughness;
-layout (location = 4) uniform float param_min_intensity;
-layout (location = 5) uniform float param_intensity_saturation;
+// layout (location = 3) uniform float param_roughness;
+// layout (location = 4) uniform float param_min_intensity;
+// layout (location = 5) uniform float param_intensity_saturation;
 
 layout (binding = 7) uniform usamplerCube cluster_normals_cubemap;
 layout (binding = 8) uniform sampler1D representative_normals_texture;
@@ -91,54 +89,58 @@ struct Cone
 };
 
 // Cone
-// compute_conservative_specular_cone(vec3 light_normal, vec3 light_center, float light_radius, vec3 cluster_normal)
+// compute_light_specular_cone(vec3 light_normal,
+//                             vec3 light_position,
+//                             float light_geo_radius,
+//                             vec3 cluster_normal)
 // {
 //     Cone cone;
+//     cone.axis = reflect(-cluster_normal, light_normal);
     
-//     // 1. Assume worst-case roughness (α ≈ 0.5, common for noticeable specular)
-//     const float MAX_SPECULAR_ANGLE = radians(45.0); // ~α=0.5 GGX lobe
+//     // Calculate light angular size (conservative approximation)
+    // float distance = length(light_position);
+    // float light_angular_size = atan(light_geo_radius / distance);
     
-//     // 2. Account for light angular size
-//     // float light_angular_radius = atan(light_radius / max(length(light_center), 1e-5));
-//     float distance_to_light = length(light_center);
-//     float solid_angle = light_radius*light_radius / (distance_to_light*distance_to_light);
-//     float angular_size = sqrt(solid_angle); // Approximate angular radius in radians
-    
-//     // 3. Dominant reflection direction for cluster
-//     cone.axis = reflect(light_normal, cluster_normal);
-    
-//     // 4. Conservative combined angle
-//     cone.angle = MAX_SPECULAR_ANGLE + angular_size;
+//     // Combined angle (root sum squares for better energy conservation)
+//     const float base_specular_angle = radians(30.0); // For roughness ~0.3
+
+//     cone.angle = sqrt(base_specular_angle*base_specular_angle + 
+//                      light_angular_size*light_angular_size);
     
 //     return cone;
 // }
 
+// bool
+// cones_intersect(Cone light_cone, Cone cluster_cone)
+// {
+//     float axes_angle = acos(dot(normalize(light_cone.axis), normalize(cluster_cone.axis)));
+//     return axes_angle < (light_cone.angle + cluster_cone.angle);
+// }
 
 Cone
-compute_conservative_specular_cone(vec3 cluster_center, Cone cluster_cone, vec3 light_center, float light_geometric_radius, vec3 light_normal, float max_spec_angle)
+compute_specular_cone(vec3 cluster_center, Cone cluster_cone, vec3 light_center, float light_geo_radius, float max_spec_angle)
 {
     // Light cone axis = reflect(cluster_center - light_center, cluster_cone.axis)
     // Use another line to get half angle
     Cone light_cone;
     light_cone.axis = normalize(reflect(light_center - cluster_center, cluster_cone.axis));
     light_cone.angle = max_spec_angle + cluster_cone.angle * 2.0;  // <- shown geometrically in my notes
+    
+    float distance = length(light_center);
+    float light_angular_size = atan(light_geo_radius / distance);
+    light_cone.angle += light_angular_size;
+
+    // light_cone.angle += radians(90.0 / CLUSTER_GRID_SIZE_X);  // at fov 90
+
     return light_cone;
 }
 
 bool
 specular_visible(Cone light_cone, vec3 view_dir)
 {
-    float a = acos(dot(light_cone.axis, -view_dir));
+    float a = acos(dot(light_cone.axis, normalize(-view_dir)));
     return a <= light_cone.angle;
 }
-
-// bool
-// specular_intersects(Cone light_cone, Cone cluster_cone, vec3 light_to_cluster)
-// {
-//     vec3 L = normalize(light_to_cluster);
-//     float total_angle = light_cone.angle + cluster_cone.angle;
-//     return dot(light_cone.axis, L) > cos(total_angle);
-// }
 
 bool
 sphere_aabb_intersection(vec3 center, float radius, vec3 aabb_min, vec3 aabb_max)
@@ -257,14 +259,14 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     if (aabb_aabb_intersect(area_lights[i].aabb_min.xyz, area_lights[i].aabb_max.xyz, cluster.min_point.xyz, cluster.max_point.xyz))
     {
         diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        #if CLUSTER_NORMALS_COUNT == 1
-            diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        #else
-            // Normal based diffuse culling
-            vec3 light_dir = normalize(sphere.xyz - cluster_center);
-            float cos_theta = dot(nc.cluster_normal, light_dir);
-            diffuse_passed = cos_theta > (0.2 - nc.half_angle);
-        #endif
+        // #if CLUSTER_NORMALS_COUNT == 1
+        //     diffuse_passed = sphere_aabb_intersection(sphere.xyz, sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        // #else
+        //     // Normal based diffuse culling
+        //     vec3 light_dir = normalize(sphere.xyz - cluster_center);
+        //     float cos_theta = dot(nc.cluster_normal, light_dir);
+        //     diffuse_passed = cos_theta > (0.2 - nc.half_angle);
+        // #endif
     }
 
     // Specular test
@@ -272,7 +274,7 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
 
     #if CLUSTER_NORMALS_COUNT == 1
         #if 1
-        // Literally just double the bounding sphere test
+        // Literally just a bigger bounding sphere test
         specular_passed = sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
         #else
         // OLD METHOD COULDN'T GET WORKING GUD
@@ -309,13 +311,33 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
         cluster_cone.axis = nc.cluster_normal;
         cluster_cone.angle = nc.half_angle;
 
-        Cone light_cone = compute_conservative_specular_cone(cluster_center, cluster_cone, sphere.xyz, 0.5*distance(p0, p2), light_normal, radians(45));
-        specular_passed = specular_visible(light_cone, view_dir) && sphere_aabb_intersection(sphere.xyz, 2.0 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        // Cone light_cone = compute_light_specular_cone(
+        //     light_normal,
+        //     sphere.xyz,
+        //     0.5*distance(p0, p2),
+        //     nc.cluster_normal
+        // );
+        // specular_passed = cones_intersect(light_cone, cluster_cone);
+
+        Cone light_cone = compute_specular_cone(
+            cluster_center,
+            cluster_cone,
+            sphere.xyz, 
+            0.5*distance(p0, p2),
+            radians(45.0)
+        );
+        specular_passed = specular_visible(light_cone, view_dir);
+
+        // // Include diffuse term since we aren't including angular size of light so this breaks down near the light otherwise
+        // specular_passed = specular_passed || diffuse_passed;
+
+        // Sadly, we have to include a range limit too, otherwise we assign far too much of the screen:
+        // specular_passed = specular_passed && sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
     #endif
 
     // Seperate diffuse and specular light culling
     uint result = 0u;
-    if (diffuse_passed)  result |= 0x1u;
+    // if (diffuse_passed)  result |= 0x1u;
     if (specular_passed) result |= 0x2u;
     return result;
 }
