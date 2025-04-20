@@ -155,7 +155,7 @@ gl_primitive_mode_from_cgltf(cgltf_primitive_type primitive_type)
 typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has_tangent; } VAO_Attributes;
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
-#define INTEGRATED_GPU
+// #define INTEGRATED_GPU
 #define ONE_CLUSTER_PER_WORKGROUP  // <-- Much better bruteforce performance
 #ifdef INTEGRATED_GPU
     #define CLUSTER_GRID_SIZE_X 16//16//32//8//32//32//16 
@@ -166,7 +166,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
     #define CLUSTER_GRID_SIZE_Y 9//16
     #define CLUSTER_GRID_SIZE_Z 24//12//16
 #endif  // INTEGRATED_GPU
-#define CLUSTER_NORMALS_COUNT 24//1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 6              //1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200
 
@@ -1895,7 +1895,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     }
     else if (scene_id == 1)
     {
-#define USE_MIRRORED_SUNTEMPLE
+// #define USE_MIRRORED_SUNTEMPLE
 #ifndef USE_MIRRORED_SUNTEMPLE
         *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
 #else

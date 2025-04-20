@@ -1,0 +1,178 @@
+
+
+
+Specular Clusters
+Showing artefacts from missing terms that only affects near clusters!
+====================================================================
+
+Using 24 normal cones per cluster
+
+
+
+
+
+
+
+
+
+
+
+
+Starting with Diffuse Bounds:
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+24-Normal Cone specular:
+Firstly:  Light Cones without angular size terms 
+ - The maths breaks down close to the lights
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Secondly: Including diffuse but no bound on range 
+ - This solves the problem close to the lights
+
+
+No artefacts but very performant because so many lights at a large distance
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Thirdly: Sadly we can't specular this far away and maintain performance.
+         So we introduce 2*diffuse radius as a max. 
+
+will compare performance to no specular 30 ms less shading time since less light is being added, 
+
+This is fine so some scenes, and the radius can be changed.
+
+
+
+
+Now we compare to much cheaper culling: specular with diffuse bounds
+NO NORMAL CLUSTERS
+
+much faster compute time of 2ms, but quite a bit more shading time.
+
+We will compare light operations on this scene in this specific perspective:
+NO NORMALS: 63552492
+24 NORMALS: 42915180
+
+Clearly considering normals significantly reduces expensive LTC light ops
+
+If we make normal cone culling more efficient it would be the preffered method of adding specular
+
+
+
+
+
+
+
+
+
+
+1280x720: 
+
+
+TEST1: No normals with 1.5*specular range
+TEST2: 24 Normal Cones with 1.5*specular range:
+
+
+
+I ran the tests without OBS running and got these final results
+on a NVIDIA GTX 1060 with 2016 area lights:
+1: NO NORMALS LIGHT OPS = 70101700  ~1.6ms compute, ~124ms shading 
+2: 24 NORMALS Light OPS = 42915180   ~30ms compute, ~67ms  shading
+
+3: 6  NORMALS Light OPS = 42915180   ~8ms  compute, ~67ms  shading
+4: 54 NORMALS Light OPS = 42915180   ~64ms compute, ~67ms  shading
+
+CANDIDATE FOR BEST:
+  6 NORMALS (16x9x24x6)
+
+
+
+
+
+
+
+
+
+
+
+
+
+Strangely we get the exact same light ops with 6 normal cones!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Now onto 24 normals, we get a massive reduction in light ops with same results:
+
+Lets compare shading time:
+24 normals: 69ms
+no normals: 125ms
+
+
+
+
+

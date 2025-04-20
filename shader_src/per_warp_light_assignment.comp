@@ -126,9 +126,9 @@ compute_specular_cone(vec3 cluster_center, Cone cluster_cone, vec3 light_center,
     light_cone.axis = normalize(reflect(light_center - cluster_center, cluster_cone.axis));
     light_cone.angle = max_spec_angle + cluster_cone.angle * 2.0;  // <- shown geometrically in my notes
     
-    float distance = length(light_center);
-    float light_angular_size = atan(light_geo_radius / distance);
-    light_cone.angle += light_angular_size;
+    // float distance = length(light_center);
+    // float light_angular_size = atan(light_geo_radius / distance);
+    // light_cone.angle += light_angular_size;
 
     // light_cone.angle += radians(90.0 / CLUSTER_GRID_SIZE_X);  // at fov 90
 
@@ -326,18 +326,18 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
             0.5*distance(p0, p2),
             radians(45.0)
         );
-        specular_passed = specular_visible(light_cone, view_dir);
+        // specular_passed = specular_visible(light_cone, view_dir);
 
-        // // Include diffuse term since we aren't including angular size of light so this breaks down near the light otherwise
-        // specular_passed = specular_passed || diffuse_passed;
+        // Include diffuse term since this breaks down near the light otherwise
+        specular_passed = specular_passed || diffuse_passed;
 
         // Sadly, we have to include a range limit too, otherwise we assign far too much of the screen:
-        // specular_passed = specular_passed && sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        specular_passed = specular_passed && sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
     #endif
 
     // Seperate diffuse and specular light culling
     uint result = 0u;
-    // if (diffuse_passed)  result |= 0x1u;
+    if (diffuse_passed)  result |= 0x1u;
     if (specular_passed) result |= 0x2u;
     return result;
 }
