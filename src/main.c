@@ -166,7 +166,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
     #define CLUSTER_GRID_SIZE_Y 9//16
     #define CLUSTER_GRID_SIZE_Z 24//12//16
 #endif  // INTEGRATED_GPU
-#define CLUSTER_NORMALS_COUNT 6              //1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 54              //1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200
 
@@ -1516,7 +1516,11 @@ draw_gltf_scene(Scene* scene)
     // glBindBufferBase(GL_SHADER_STORAGE_BUFFER, GLOBAL_SSBO_INDEX_CLUSTERGRID, program.cluster_grid_ssbo);
 
     // Reset light op counter to 0
-    *program.light_ops_mapped_pointer = 0;
+    if (program.is_light_op_counting_enabled)
+    {
+        *program.light_ops_mapped_pointer = 0;
+        glMemoryBarrier(GL_ALL_BARRIER_BITS);
+    }
 
     u32 num_point_lights = array_length(&program.point_lights, sizeof(PointLight));
     u32 num_area_lights = array_length(&program.area_lights, sizeof(AreaLight));
@@ -1848,7 +1852,11 @@ draw_gltf_scene(Scene* scene)
     free_array(&transparent_draw_calls);
 
     // Check number of light ops by reading from mapped memory buffer
-    program.last_light_ops_value = *program.light_ops_mapped_pointer;
+    if (program.is_light_op_counting_enabled)
+    {
+        glFinish();
+        program.last_light_ops_value = *program.light_ops_mapped_pointer;
+    }
 }
 
 void
@@ -1895,7 +1903,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     }
     else if (scene_id == 1)
     {
-// #define USE_MIRRORED_SUNTEMPLE
+#define USE_MIRRORED_SUNTEMPLE
 #ifndef USE_MIRRORED_SUNTEMPLE
         *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
 #else

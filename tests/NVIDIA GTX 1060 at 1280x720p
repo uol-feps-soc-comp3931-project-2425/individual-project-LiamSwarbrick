@@ -1,0 +1,22 @@
+NVIDIA GTX 1060 at 1280x720p
+(16x9x24xN where N is the normal count)
+When N == 1, we use position only clusters.
+{
+	Single Suntemple with 126 area lights:
+
+	 N  | LIGHT OPS | COMPUTE (ms) | FRAGMENT (ms) | Total
+	 1  | 65936949 | 0.4 | 106 | 106.4
+	 6  | 42893462 | 2.7 | 60 | 62.7
+	 24 | 42893462 | 11 | 60 | 71
+	 54 | 42893462 | 25.5 | 61 | 86.5
+	 
+	16 Suntemples with 2016 area lights
+
+	 N  | LIGHT OPS | COMPUTE (ms) | FRAGMENT (ms) | Total
+	 1  | 70101700 | 1.7 | 120 | 121.7 
+	 6  | 42915180 | 8.7 | 65 | 73.7
+	 24 | 42915180 | 34 | 65 | 99
+	 54 | 42915180 | 70 | 70 | 140
+
+	 For reference: No culling with only 126 area lights takes 551ms shading time and 9 seconds to render in the 2016 area light scene.
+}

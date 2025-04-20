@@ -88,44 +88,14 @@ struct Cone
     float angle;  // Half angle
 };
 
-// Cone
-// compute_light_specular_cone(vec3 light_normal,
-//                             vec3 light_position,
-//                             float light_geo_radius,
-//                             vec3 cluster_normal)
-// {
-//     Cone cone;
-//     cone.axis = reflect(-cluster_normal, light_normal);
-    
-//     // Calculate light angular size (conservative approximation)
-    // float distance = length(light_position);
-    // float light_angular_size = atan(light_geo_radius / distance);
-    
-//     // Combined angle (root sum squares for better energy conservation)
-//     const float base_specular_angle = radians(30.0); // For roughness ~0.3
-
-//     cone.angle = sqrt(base_specular_angle*base_specular_angle + 
-//                      light_angular_size*light_angular_size);
-    
-//     return cone;
-// }
-
-// bool
-// cones_intersect(Cone light_cone, Cone cluster_cone)
-// {
-//     float axes_angle = acos(dot(normalize(light_cone.axis), normalize(cluster_cone.axis)));
-//     return axes_angle < (light_cone.angle + cluster_cone.angle);
-// }
-
 Cone
-compute_specular_cone(vec3 cluster_center, Cone cluster_cone, vec3 light_center, float light_geo_radius, float max_spec_angle)
+compute_specular_cone(vec3 cluster_center, Cone cluster_cone, vec3 light_center, float max_spec_angle)
 {
-    // Light cone axis = reflect(cluster_center - light_center, cluster_cone.axis)
-    // Use another line to get half angle
     Cone light_cone;
     light_cone.axis = normalize(reflect(light_center - cluster_center, cluster_cone.axis));
     light_cone.angle = max_spec_angle + cluster_cone.angle * 2.0;  // <- shown geometrically in my notes
-    
+
+// light_geo_radius = 0.5*distance(p0, p2) as an argument
     // float distance = length(light_center);
     // float light_angular_size = atan(light_geo_radius / distance);
     // light_cone.angle += light_angular_size;
@@ -222,31 +192,19 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     vec4 sphere = area_lights[i].sphere_of_influence_center_xyz_radius_w;
     vec3 view_dir = normalize(-cluster_center);
 
-    #if CLUSTER_NORMALS_COUNT > 1  // We need some of these later when normals > 1
-    vec3 p0 = area_lights[i].points_viewspace[0].xyz;
-    vec3 p1 = area_lights[i].points_viewspace[1].xyz;
-    vec3 p2 = area_lights[i].points_viewspace[2].xyz;
-    vec3 light_normal = normalize(cross(p1 - p0, p2 - p0));
-    vec3 furthest_point = mix(cluster.max_point.xyz, cluster.min_point.xyz, lessThan(light_normal, vec3(0)));
-    #endif
-
     // Half space rejection for single sided area lights
     if (area_lights[i].is_double_sided == 0)
     {
-        #if CLUSTER_NORMALS_COUNT == 1
         vec3 p0 = area_lights[i].points_viewspace[0].xyz;
         vec3 p1 = area_lights[i].points_viewspace[1].xyz;
         vec3 p2 = area_lights[i].points_viewspace[2].xyz;
         vec3 light_normal = cross(p1 - p0, p2 - p0);
-        #endif
 
         // Fast center test before exact check
         if (dot(cluster_center - p0, light_normal) < 0)
         {
             float plane_constant = -dot(light_normal, p0);
-            #if CLUSTER_NORMALS_COUNT == 1
             vec3 furthest_point = mix(cluster.max_point.xyz, cluster.min_point.xyz, lessThan(light_normal, vec3(0)));
-            #endif
             if (dot(light_normal, furthest_point) + plane_constant < 0)
             {
                 return 0u;
@@ -273,60 +231,18 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     bool specular_passed = false;
 
     #if CLUSTER_NORMALS_COUNT == 1
-        #if 1
-        // Literally just a bigger bounding sphere test
         specular_passed = sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
-        #else
-        // OLD METHOD COULDN'T GET WORKING GUD
-        // float distance_to_light = distance(cluster_center, sphere.xyz);
-        // float effective_distance = max(distance_to_light - sphere.w, 0.0);
-        // float attenuation = 1.0 / (1.0 + effective_distance * effective_distance);
-        // float alpha = area_lights[i].color_rgb_intensity_a.a;
-        // float raw_intensity = alpha * attenuation;
-        // float scaled_intensity = raw_intensity / (raw_intensity + param_intensity_saturation);
-        // // float specular_tau = pow(param_min_intensity / (scaled_intensity + 1e-6), 1.0 / param_roughness);
-        // float specular_tau = exp2(log2(param_min_intensity / (raw_intensity + 1e-6)) * (1.0/param_roughness));
-
-        // // 1. Conservative light-to-cluster vector
-        // vec3 light_to_cluster = cluster_center - sphere.xyz;
-        // float dist_to_light = length(light_to_cluster);
-        // vec3 light_dir = light_to_cluster / (dist_to_light + 1e-6);
-        
-        // // 2. Find most significant light point (dominant specular contributor)
-        // float light_geo_radius = distance(p2, p0);
-        // vec3 dominant_point = sphere.xyz + light_geo_radius * reflect(-view_dir, light_dir);
-        
-        // // 3. Half-vector test with roughness adjustment
-        // vec3 H = normalize(view_dir + normalize(dominant_point - cluster_center));
-        // float NdotH = dot(view_dir, H); // Using view_dir as proxy for cluster normal
-        
-        // // 4. Roughness-adjusted threshold
-        // float angular_tolerance = mix(0.05, 0.5, param_roughness); // Wider tolerance for rough mats
-        // specular_passed = (NdotH > (specular_tau - angular_tolerance)) && 
-        //                 (raw_intensity > param_min_intensity);
-        #endif
     #else
-        // This needs more work, cones need a range too (maybe double diffuse or something) then use a BVH per normal cone
         Cone cluster_cone;
         cluster_cone.axis = nc.cluster_normal;
         cluster_cone.angle = nc.half_angle;
 
-        // Cone light_cone = compute_light_specular_cone(
-        //     light_normal,
-        //     sphere.xyz,
-        //     0.5*distance(p0, p2),
-        //     nc.cluster_normal
-        // );
-        // specular_passed = cones_intersect(light_cone, cluster_cone);
-
         Cone light_cone = compute_specular_cone(
             cluster_center,
             cluster_cone,
-            sphere.xyz, 
-            0.5*distance(p0, p2),
+            sphere.xyz,
             radians(45.0)
         );
-        // specular_passed = specular_visible(light_cone, view_dir);
 
         // Include diffuse term since this breaks down near the light otherwise
         specular_passed = specular_passed || diffuse_passed;
