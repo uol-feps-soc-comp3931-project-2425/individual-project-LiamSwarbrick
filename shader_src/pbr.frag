@@ -539,8 +539,8 @@ main()
     // frag_color = vec4(pow(rgb, vec3(INV_GAMMA)), alpha);
     // frag_color = vec4(rgb, alpha);
 
-    float amount_red = float(num_point_lights/15.0);
-    // float amount_red = float(num_area_lights/3.0);
+    // float amount_red = float(num_point_lights/15.0);
+    float amount_red = float(num_area_lights/1.0);
     float amount_blue = float(num_area_lights/40.0);
     // float amount_blue = float(num_area_lights/35.0);
     // float amount_blue = float(0.0);

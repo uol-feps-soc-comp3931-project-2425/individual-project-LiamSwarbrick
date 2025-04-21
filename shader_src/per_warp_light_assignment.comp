@@ -273,10 +273,6 @@ main()
     }
     barrier();  // Ensure all threads see the loaded cluster
 
-    uint total_threads = gl_WorkGroupSize.x;
-    uint local_thread_id = gl_LocalInvocationID.x;
-
-    // index = tile.x + (tile.y * grid_size.x) + (actual_z * grid_size.x * grid_size.y);
     uint clusters_per_layer = CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y;
     uint combined_z = index / clusters_per_layer;
     uint remainder = index % clusters_per_layer;
@@ -306,6 +302,9 @@ main()
     const uint max_point_lights = CLUSTER_MAX_LIGHTS/2;
     const uint max_area_lights = CLUSTER_MAX_LIGHTS/2;
 
+    uint total_threads = gl_WorkGroupSize.x;
+    uint local_thread_id = gl_LocalInvocationID.x;
+
     // Each thread processes a slice of point lights.
     for (uint i = local_thread_id; i < num_point_lights; i += total_threads)
     {
@@ -321,6 +320,7 @@ main()
 
     barrier();
 
+    // And then a slice of the area lights
     for (uint i = local_thread_id; i < num_area_lights; i += total_threads)
     {
         uint contribution_flags = test_arealight(i, cluster, normal_cone);
