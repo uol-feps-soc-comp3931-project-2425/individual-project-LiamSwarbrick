@@ -915,12 +915,10 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
             
             cubemap_posx[vector_index + 0] =  1.0f  * invsqrt;
             cubemap_posx[vector_index + 1] = -v_val * invsqrt;
-            // cubemap_posx[vector_index + 1] = v_val * invsqrt;  // should it be flipped?
             cubemap_posx[vector_index + 2] = -u_val * invsqrt;
 
             cubemap_negx[vector_index + 0] = -1.0f  * invsqrt;
             cubemap_negx[vector_index + 1] = -v_val * invsqrt;
-            // cubemap_negx[vector_index + 1] = v_val * invsqrt;
             cubemap_negx[vector_index + 2] =  u_val * invsqrt;
 
             cubemap_posy[vector_index + 0] =  u_val * invsqrt;
@@ -933,12 +931,10 @@ init_empty_cluster_grid()  // Abstraction to use when changing cluster settings 
 
             cubemap_posz[vector_index + 0] =  u_val * invsqrt;
             cubemap_posz[vector_index + 1] = -v_val * invsqrt;
-            // cubemap_posz[vector_index + 1] = v_val * invsqrt;
             cubemap_posz[vector_index + 2] =  1.0f  * invsqrt;
 
             cubemap_negz[vector_index + 0] = -u_val * invsqrt;
             cubemap_negz[vector_index + 1] = -v_val * invsqrt;
-            // cubemap_negz[vector_index + 1] = v_val * invsqrt;
             cubemap_negz[vector_index + 2] = -1.0f  * invsqrt;
 
             // Index = faceid*n*n + v*n + u
