@@ -1,0 +1,81 @@
+THESE ARE OLD RESULTS:
+Much better results have since been achieved.
+Albeit tested on a 1060 instead of 4070.
+
+
+RESULTS:
+- Machine irrelevant since its only dependent on resolution but its the Lab Machine with NVIDIA GeForce RTX 4070
+- Counting number of area light ops at 1280x720p in the Suntemple scene with ... area lights
+- Each area light shade counts as a light op, this was a mistake it should have been each ltc evaluate call,
+ so i have to redo the test
+, I could have counted edge integration as the light op since it accounts for polygonal lights of different sizes, but culling only affects the number of LTC_Evaluate calls, not the edge integration so I only considered that.
+
+Suntemple specular parameters (This scene is only slightly glossy so 10.0):
+float param_roughness             = 1.0;
+float param_min_intensity         = 0.01;
+float param_intensity_saturation  = 10.0;
+
+123 area lights in scene.
+
+OLD TABLE:
+NORMAL COUNT | LOCATION A ops | fps   | LOCATION B ops | fps   | comment on artefacts
+           1 |       89114000 |  25.0 |      102373650 |  25.0 | None since specular must be assigned to all clusters
+           6 |        8486997 |  37.5 |       12935652 |  37.5 | None after tuning correct parameters for scene
+          24 |        8492041 |  15.0 |       13003057 |  15.0 | None after tuning correct parameters for scene
+          54 |        8496759 |   7.0 |       12985008 |   7.5 | None after tuning correct parameters for scene
+ Heuristic 1 |        7152637 | 149.0 |       11945975 | 110.5 | Noticable specular incorrectness due to strange heuristic, could be tuned to be better but it's very fast right now so best for mostly-matte scenes.
+
+Comments:
+- Interestingly, when I compared "Heuristic 1" to "6 normals" on my iGPU laptop,
+  the 6 normals got better performance...
+
+- Clearly need to profile the compute shading time on these GPUs, the normals compute must be expensive.
+- Of course Heuristic 1 is underassigning so saves computation there,
+  However its important to note that in both tests A and B, the artefacts aren't noticble.
+  The artefacts become noticible when moving around however and are horrible in some configurations.
+
+Future work:
+- Optimizing the compute shader by implementing the tree based, assignment instead of
+  bruteforce seems to be the ideal step for a proper lighting implementation.
+- This is because we need the normals for good specular, but the compute shader is slow right now.
+
+FUCK I DIDN'T COUNT DIFFUSE AND SPECULAR AS SEPERATE LIGHT OPS
+Also maybe play with compute batch size.
+
+
+=====================================================
+      NEW DATA:
+Location A: Inside temple middle room
+Location B: Inside temple back room
+Location C: Outside
+
+Area light count: 1968
+Far plane: 1000 units
+
+Nonglossy 1 is HEURISTIC_1, and glossy 1 is HEURISTIC_1+FORCED_SPECULAR_PEAK
+
+NORMAL COUNT | LOCATION A ops | compute time ms | fps   | LOCATION B ops | compute time ms | fps   | LOCATION C ops | compute time ms | fps | comment on artefacts
+ 
+ Nonglossy 1 |       13455813 |         14      |    44 |    23101000    |     14          | 40    |       35133210 |           14    | 27  | Noticable specular artefacts around shiny materials due to strange heuristic, could be tuned to be better but it's very fast right now so best for mostly-matte scenes.
+    glossy 1 |       15150923 |         19      |    35 |    24833934    |             20  |  33   |       36133146 |           24    | 24  | None after tuning correct parameters for scene (Crazy that this is the same as n6 but faster)
+           6 |       15150923 |     101         |     9 |    24833934    |             103 |    9  |       36133146 |            95   | 8.5 | None after tuning correct parameters for scene
+          24 |       15158089 |            385  |   2.5 |    24847826    |             391 |  2.5  |       36135981 |            366  | 2.5 | None after tuning correct parameters for scene
+          54 |       15154225 |            861  |     1 |    24842105    |             867 |     1 |       36138182 |            800  |   1 | None after tuning correct parameters for scene
+
+FORCED_SPECULAR_PEAK_TEST is a new one I made last, and it seems to be the best to use.
+- It only uses position normals so it much faster
+- There must be a but in my implementation of more normals maybe? idk
+
+
+====================
+06/04/2025 test on laptop:
+Suntemple scene 1 at 1280x720p, 2000 area lights, no point lights
+\[
+\begin{aligned}
+\text{Cluster grid}             & \text{Compute time (ms)} & FPS & Light ops \\
+8 \times 8 \times 8 \times 1    &  4                       & 4.5 & 53680608 \\
+32 \times 32 \times 16 \times 1 & 12                       & 5   & 45924235 \\
+\end{aligned}
+\]
+So if the very inefficient brute force approach is replaced, the compute time can be reduced to support
+many more lights.

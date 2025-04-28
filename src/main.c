@@ -1899,7 +1899,7 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
     }
     else if (scene_id == 1)
     {
-// #define USE_MIRRORED_SUNTEMPLE
+#define USE_MIRRORED_SUNTEMPLE
 #ifndef USE_MIRRORED_SUNTEMPLE
         *out_loaded_scene = load_gltf_scene("data/suntemple/suntemplegltf.gltf");
 #else
@@ -1943,7 +1943,8 @@ load_test_scene(int scene_id, Scene* out_loaded_scene)
         // *out_loaded_scene = load_gltf_scene("data/Xbox - Halo 2 - Coagulation/Coagulation/glTF/untitled.gltf");
         // *out_loaded_scene = load_gltf_scene("data/Wii U - Mario Kart 8 - Wii Warios Gold Mine/glTF/untitled.gltf");
         // *out_loaded_scene = load_gltf_scene("data/uploads_files_3363978_BackStreet2/Building/gltf/exportfromfbx.gltf");
-        *out_loaded_scene = load_gltf_scene("data/blenderflattest/myflattest.gltf");
+        // *out_loaded_scene = load_gltf_scene("data/blenderflattest/myflattest.gltf");
+        *out_loaded_scene = load_gltf_scene("data/blenderflattest/myflattestsmooth.gltf");
 
         // Working scenes:
         // *out_loaded_scene = load_gltf_scene("data/sponza-glTF/Sponza.gltf");

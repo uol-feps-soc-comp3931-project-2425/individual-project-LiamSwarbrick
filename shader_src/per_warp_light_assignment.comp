@@ -93,7 +93,8 @@ compute_specular_cone(vec3 cluster_center, Cone cluster_cone, vec3 light_center,
 {
     Cone light_cone;
     light_cone.axis = normalize(reflect(light_center - cluster_center, cluster_cone.axis));
-    light_cone.angle = max_spec_angle + cluster_cone.angle * 2.0;  // <- shown geometrically in my notes
+    light_cone.angle = max_spec_angle + cluster_cone.angle * 2.0;
+    // ^ light angle = cluster angle * 2.0 is shown geometrically in my notes
 
 // light_geo_radius = 0.5*distance(p0, p2) as an argument
     // float distance = length(light_center);
@@ -249,6 +250,7 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
 
         // Sadly, we have to include a range limit too, otherwise we assign far too much of the screen:
         specular_passed = specular_passed && sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        // specular_passed = diffuse_passed; // TEMP
     #endif
 
     // Seperate diffuse and specular light culling
