@@ -156,17 +156,17 @@ typedef struct VAO_Attributes { b8 has_position, has_texcoord_0, has_normal, has
 typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
 
 // #define INTEGRATED_GPU
-#define ONE_CLUSTER_PER_WORKGROUP  // <-- Much better bruteforce performance
+#define ONE_CLUSTER_PER_WORKGROUP  // <-- Much better bruteforce performance  TODO: Remove previous version because it isn't supported any more and this define must be enabled
 #ifdef INTEGRATED_GPU
-    #define CLUSTER_GRID_SIZE_X 16//16//32//8//32//32//16 
-    #define CLUSTER_GRID_SIZE_Y 9//9//18//8//32//32//9
-    #define CLUSTER_GRID_SIZE_Z 24//24//16//8//16//32
+    #define CLUSTER_GRID_SIZE_X 16
+    #define CLUSTER_GRID_SIZE_Y 9
+    #define CLUSTER_GRID_SIZE_Z 24
 #else
-    #define CLUSTER_GRID_SIZE_X 16//24
-    #define CLUSTER_GRID_SIZE_Y 9//16
-    #define CLUSTER_GRID_SIZE_Z 24//12//16
+    #define CLUSTER_GRID_SIZE_X 16
+    #define CLUSTER_GRID_SIZE_Y 9
+    #define CLUSTER_GRID_SIZE_Z 24
 #endif  // INTEGRATED_GPU
-#define CLUSTER_NORMALS_COUNT 6              //1//24//54//6   // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 6  // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200
 
@@ -3112,7 +3112,7 @@ main(int argc, char** argv)
         // Display driver and framerate in window title
         {
             char title[512] = { 0 };
-            sprintf(title, "%s Hardware: %s FPS: %f (NO VSYNC) Light Ops: %d", window_title, program.driver_name, displayed_fps, program.last_light_ops_value);
+            sprintf(title, "%s (res:%dx%d) Hardware: %s FPS: %f (NO VSYNC) Light Ops: %d", window_title, program.w, program.h, program.driver_name, displayed_fps, program.last_light_ops_value);
             glfwSetWindowTitle(program.window, title);
         }
 
