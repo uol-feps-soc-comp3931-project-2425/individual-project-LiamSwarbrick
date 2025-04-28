@@ -231,8 +231,13 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
     bool specular_passed = false;
 
     #if CLUSTER_NORMALS_COUNT == 1
-        specular_passed = sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
+        // dif: Diffuse bounds only:
+        specular_passed = diffuse_passed;
+
+        // Specular 1: Naive extending for less specular artefacts
+        // specular_passed = sphere_aabb_intersection(sphere.xyz, 1.5 * sphere.w, cluster.min_point.xyz, cluster.max_point.xyz);
     #else
+        // Specular 2: Light cones
         Cone cluster_cone;
         cluster_cone.axis = nc.cluster_normal;
         cluster_cone.angle = nc.half_angle;
@@ -243,6 +248,7 @@ test_arealight(uint i, Cluster cluster, NormalCone nc)
             sphere.xyz,
             radians(45.0)
         );
+        specular_passed = specular_visible(light_cone, view_dir);
 
         // Include diffuse term since this breaks down near the light otherwise
         specular_passed = specular_passed || diffuse_passed;
