@@ -1,4 +1,20 @@
-[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/yfSNuVM-)
+## Scalable Real-Time LTC Polygonal Lights with Clustered Forward Shading
+
+See src and shader_src for code.
+- To compile on Linux Lab machines, use ./build.sh then run ./a.out
+- To compile on Windows use build.bat, then a.exe (requires Mingw-w64)
+- To switch between normal clusters, and position clusters, change `#define CLUSTER_NORMALS_COUNT` between 1, 6, 24, or 54 (defined in `src/main.c`).
+- Test scenes have not been included, except for very simple starter scenes.
+
+Controls:
+- KEY_E toggles mouse movement for camera, use WASD, space and shift for moving.
+- Spawn area lights with KEY_ENTER, press 3,4,5 to select between triangle lights, quad lights, and pentagon lights.
+- F2 toggles cluster visualisation.
+- F3 toggles clustered shading (on by default).
+
+<!-- 
+[![Review Assignment Due Date](https://classroom.github.com/assets/deadline-readme-button-22041afd0340ce965d47ae6ef1cefeee28c7c493a6346c4f15d667ab976d596c.svg)](https://classroom.github.com/a/yfSNuVM-) -->
+
 
 <!-- 
 ![](_ideating/progress_screenshots/19dec-100point_lights-shinyUntitled.png)
