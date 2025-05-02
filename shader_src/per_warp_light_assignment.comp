@@ -77,8 +77,8 @@ shared Cluster cluster;  // Declare a shared instance of Cluster for the workgro
 struct NormalCone
 {
     float half_angle;
-    float cos_threshold;
-    float sin_threshold;
+    float cos_threshold;  // Not unused anymore
+    float sin_threshold;  // Not unused anymore
     vec3 cluster_normal;
 };
 
@@ -283,7 +283,7 @@ main()
 
     uint clusters_per_layer = CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y;
     uint combined_z = index / clusters_per_layer;
-    uint remainder = index % clusters_per_layer;
+    // uint remainder = index % clusters_per_layer;
     uint normal_bin = combined_z % CLUSTER_NORMALS_COUNT;
 
     NormalCone normal_cone;
@@ -304,8 +304,8 @@ main()
         normal_cone.half_angle = 0.8*M_PI;
         normal_cone.cluster_normal = vec3(0.0, 1.0, 0.0);
     #endif
-    normal_cone.cos_threshold = cos(normal_cone.half_angle);
-    normal_cone.sin_threshold = sin(normal_cone.half_angle);
+    normal_cone.cos_threshold = cos(normal_cone.half_angle);  // Deprecated
+    normal_cone.sin_threshold = sin(normal_cone.half_angle);  // Deprecated
 
     const uint max_point_lights = CLUSTER_MAX_LIGHTS/2;
     const uint max_area_lights = CLUSTER_MAX_LIGHTS/2;

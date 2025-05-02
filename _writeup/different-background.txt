@@ -1,7 +1,0 @@
-area lights:
-- Lecocq∗ et al. (MUST READ BACKGROUND)
-- OLDER area light methods such as Representative Point could briefly cover.
-
-clusters:
-- Tiled shading, its problems -> forward shading and then clustered
-

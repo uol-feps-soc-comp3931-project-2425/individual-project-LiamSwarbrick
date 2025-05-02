@@ -166,7 +166,7 @@ typedef struct VAO_Range { u32 begin; u32 count; } VAO_Range;
     #define CLUSTER_GRID_SIZE_Y 9
     #define CLUSTER_GRID_SIZE_Z 24
 #endif  // INTEGRATED_GPU
-#define CLUSTER_NORMALS_COUNT 6  // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
+#define CLUSTER_NORMALS_COUNT 1  // of the form 6*n*n, e.g. 6, 24, 54  // 1 disables normal clustering
 #define NUM_CLUSTERS (CLUSTER_GRID_SIZE_X * CLUSTER_GRID_SIZE_Y * CLUSTER_GRID_SIZE_Z * CLUSTER_NORMALS_COUNT)
 #define CLUSTER_DEFAULT_MAX_LIGHTS 200
 

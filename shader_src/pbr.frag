@@ -28,15 +28,6 @@ layout (std430, binding = 0) restrict buffer point_light_ssbo
     PointLight point_lights[];
 };
 
-
-
-// TODO: Remove MAX_NGON since I'm not clipping in the old way anymore...
-//       Leaving note here for now so I can maybe mention this in writeup
-// #define MAX_NGON 15  // NOTE: This is the max ngon size after clipping (which can introduce more vertices)
-                     // A size of 15 can handle a worst case clipping of a 10-gon - derivation in my writeup.
-                     // A decagon can produce a star shaped area light similar to the figure in the Heitz paper.
-// const int MAX_UNCLIPPED_NGON = (3 * MAX_NGON) / 2;
-// #define MAX_UNCLIPPED_NGON 10
 struct AreaLight
 {
     vec4 color_rgb_intensity_a;
@@ -47,6 +38,7 @@ struct AreaLight
     vec4 aabb_max;
     vec4 sphere_of_influence_center_xyz_radius_w;
     vec4 points_viewspace[MAX_UNCLIPPED_NGON];  // 4th component unused, vec3[] would be packed the same way but vec3 is implemented wrong on some drivers
+                 // NOTE: MAX_UNCLIPPED_NGON e.g. quads=4, pentagons=5, star=10. The method does not use clipping so we do not need a buffer that accomodates it
 };
 
 layout (std430, binding = 2) restrict buffer area_light_ssbo
@@ -161,6 +153,7 @@ pbr_metallic_roughness_brdf(vec4 base_color, float metallic, float roughness, ve
     return material;
 }
 
+// NOTE: Area light irradiance calculation involves an edge integral for each edge in the polygon
 vec3
 integrate_edge_sector_vec(vec3 point_i, vec3 point_j)
 {
@@ -258,80 +251,6 @@ LTC_evaluate(vec3 N, vec3 V, vec3 P, mat3 Minv, vec4 viewspace_points[MAX_UNCLIP
     return Lo_i;
 }
 
-#if 0  // Couldn't get diffuse approximation to work, it wouldn't be much faster anyway...
-vec3
-integrate_edge_sector_vec_diffuse(vec3 point_i, vec3 point_j)
-{
-    // Cheaper quadratic good enough for diffuse
-    float x = dot(point_i, point_j);
-    float y = abs(x);
-    float theta_sintheta = 1.5708 + (-0.879406 + 0.308609 * y) * y;
-    if (x < 0.0)
-    {
-        theta_sintheta = M_PI * inversesqrt(1.0 - x*x) - theta_sintheta;
-    }
-    return cross(point_i, point_j) * theta_sintheta;
-}
-
-vec3
-integrate_lambertian_hemisphere_diffuse(vec3 points[MAX_UNCLIPPED_NGON], int n)
-{
-    vec3 vsum = integrate_edge_sector_vec_diffuse(points[n-1], points[0]);  // Start with the wrap around pair (n-1, 0)
-    for (int i = 0; i < n-1; ++i)
-    {
-        vsum += integrate_edge_sector_vec_diffuse(points[i], points[i+1]);
-    }
-    return vsum;
-}
-
-vec3
-LTC_evaluate_diffuse(vec3 N, vec3 V, vec3 P, vec4 viewspace_points[MAX_UNCLIPPED_NGON], int viewspace_points_n, bool double_sided)
-{
-    #ifdef COUNT_LIGHT_OPS
-    atomicCounterIncrement(light_ops_atomic_counter_buffer);
-    #endif  // COUNT_LIGHT_OPS
-
-    // Early exit if fragment is behind polygon
-    vec3 dir = viewspace_points[0].xyz - P;
-    vec3 light_normal = cross(viewspace_points[1].xyz - viewspace_points[0].xyz, viewspace_points[2].xyz - viewspace_points[0].xyz);
-    bool behind = dot(dir, light_normal) < 0.;
-    if (!behind && !double_sided)
-    {
-        return vec3(0.0);
-    }
-
-    // Minv for this one is just identity in local coordinate system
-    vec3 T1 = normalize(V - N * dot(V, N));
-    vec3 T2 = cross(N, T1);
-    mat3 Minv = transpose(mat3(T1, T2, N));  // Move LTC domain change matrix into the tangent space.
-
-    // transformation, and using slightly faster quadratic approximation for arccos
-    vec3 points_o[MAX_UNCLIPPED_NGON];
-    for (int i = 0; i < viewspace_points_n; ++i)
-    {
-        points_o[i] = normalize(Minv * (viewspace_points[i].xyz - P));
-    }
-    vec3 vsum = integrate_lambertian_hemisphere_diffuse(points_o, viewspace_points_n);
-    float len = length(vsum);
-    float z = vsum.z / len;
-    if (behind)
-    {
-        z = -z;
-    }
-    
-    vec2 uv = vec2(z * 0.5 + 0.5, len);  // Move from range [-1,1] to [0, 1]
-    uv = uv * LUT_SCALE + LUT_BIAS;
-
-    // Fetch horizon clipped norm of the transformed BRDF me thinks
-    float horizon_clipped_scale = texture(LTC2_texture, uv).w;
-    float sum = len * horizon_clipped_scale;
-
-    // Outgoing radiance from fragment from the polygon
-    vec3 Lo_i = vec3(sum);
-    return Lo_i;
-}
-#endif
-
 void
 main()
 {
@@ -384,11 +303,11 @@ main()
     uvec3 tile = uvec3(gl_FragCoord.xy / tile_size, tile_z);
 
     // Each position contains clusters for different normal directions
-#if CLUSTER_NORMALS_COUNT == 1
+    #if CLUSTER_NORMALS_COUNT == 1
     uint normal_index = 0;
-#else
+    #else
     uint normal_index = texture(cluster_normals_cubemap, N).r;
-#endif
+    #endif
 
     uint combined_z = tile_z * CLUSTER_NORMALS_COUNT + normal_index;
     uint tile_index = tile.x + (tile.y * grid_size.x) + (combined_z * grid_size.x * grid_size.y);
@@ -397,19 +316,15 @@ main()
     uint num_area_lights = clusters[tile_index].area_count;
     // uint num_area_lights = min(clusters[tile_index].area_count, 16);  // Maybe if we sorted lights we could limit near clusters to a finite number of important lights
 
-    // FUTURE TODO?:    
-    // if (tile_z == grid_size.z - 1)
-    // {
-    //     // Special far cluster lighting system?
-    // }
-    // else
+    // POTENTIAL FUTURE TODO: Special far lighting system?
+    // if (tile_z == grid_size.z - 1) {}
 
     // Point lights
     for (int i = 0; i < num_point_lights; ++i)
     {
         uint light_index = clusters[tile_index].point_indices[i];
 #else
-    for (int light_index = 0; light_index < num_point_lights; ++light_index)
+    for (int light_index = 0; light_index < num_point_lights; ++light_index)  // NOTE: When Clustered Shading is disabled, we simply loop over all lights
     {
 #endif  // ENABLE_CLUSTERED_SHADING
 
@@ -445,16 +360,16 @@ main()
 
     // Area Lights
     #ifdef ENABLE_CLUSTERED_SHADING
-    // #pragma unroll(CLUSTER_MAX_LIGHTS/2)
     for (int i = 0; i < num_area_lights; ++i)
     {
         uint light_index = clusters[tile_index].area_indices[i];
     #else
-    for (int light_index = 0; light_index < num_area_lights; ++light_index)
+    for (int light_index = 0; light_index < num_area_lights; ++light_index)  // NOTE: When Clustered Shading is disabled, we simply loop over all lights
     {
     #endif  // ENABLE_CLUSTERED_SHADING
         AreaLight al = area_lights[light_index];
 
+        // Fetch LTC textures
         float dot_NV = clamp(dot(N, V), 0.0, 1.0);
         vec2 ltc_uv = vec2(roughness, sqrt(1.0 - dot_NV));
         ltc_uv = ltc_uv * LUT_SCALE + LUT_BIAS;
@@ -462,16 +377,19 @@ main()
         vec4 t1 = texture(LTC1_texture, ltc_uv);
         vec4 t2 = texture(LTC2_texture, ltc_uv);
 
+        // Create GGX to clamped cosine matrix:
         mat3 Minv = mat3(
             vec3(t1.x,  0., t1.y),
             vec3(  1.,  1.,   0.),
             vec3(t1.z, 0.,  t1.w)
         );
 
-        // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array due to having the same padding.
+        // NOTE: al.viewspace_points is a vec4 array but can pass to a vec3 array parameter due to them having the same padding.
         
         vec3 diffuse = vec3(0.0);
         vec3 specular = vec3(0.0);
+
+        // NOTE: We only evaluate diffuse and specular when their respective flags are set in the cluster's light flags array.
 
         #ifdef ENABLE_CLUSTERED_SHADING
         uint flags = clusters[tile_index].area_light_flags[i];
@@ -479,7 +397,6 @@ main()
         #endif
         {
             diffuse = LTC_evaluate(N, V, frag_position_viewspace, mat3(1), al.points_viewspace, al.n, al.is_double_sided == 1);
-            // diffuse = LTC_evaluate_diffuse(N, V, frag_position_viewspace, al.points_viewspace, al.n, al.is_double_sided == 1);
         }
 
         #ifdef ENABLE_CLUSTERED_SHADING
@@ -541,12 +458,12 @@ main()
 
     float amount_red = float(num_point_lights/15.0);
     // float amount_red = float(num_area_lights/1.0);
-    float amount_blue = float(num_area_lights/10.0);
+    float amount_blue = float(num_area_lights/15.0);
     // float amount_blue = float(num_area_lights/35.0);
     // float amount_blue = float(0.0);
     float amount_green = 0.0;// * float(tile_index % 100) / 100.0;// metallic_roughness.g * 0.3;
     // // float amount_red = float(num_point_lights/CLUSTER_MAX_LIGHTS);
-    vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.8);
+    vec3 col = mix(vec3(amount_red, amount_green, amount_blue), rgb, 0.0);
     frag_color = vec4(col, alpha);
     // frag_color = vec4(amount_red, amount_green, amount_blue, alpha);
     // frag_color.rgb = vec3(1.0 / (1.0 + 4.0 * metallic_roughness.b * metallic_roughness.b));
